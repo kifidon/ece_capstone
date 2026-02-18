@@ -1,0 +1,9 @@
+# MLP with TensorFlow - ECE Capstone
+tensorflow>=2.15.0
+tensorflow_hub>=0.15.0  # MoveNet Thunder from TF Hub
+numpy>=1.24.0
+pandas>=2.0.0           # CSV loading, DataFrames
+opencv-python>=4.8.0    # video/image loading
+scikit-learn>=1.3.0     # data prep, train/test split, metrics
+matplotlib>=3.8.0       # plotting training history
+pytest>=7.0.0           # tests
