@@ -1,14 +1,17 @@
 from rest_framework import serializers
-from .models import Device, Event
+from .models import EdgeDevice, EdgeEvent
 
-class DeviceSerializer(serializers.ModelSerializer):
+class EdgeDeviceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Device
+        model = EdgeDevice
         fields = '__all__'
 
-class EventSerializer(serializers.ModelSerializer):
-    devices = DeviceSerializer(many=True, read_only=True)
+class EdgeEventSerializer(serializers.ModelSerializer):
+    devices = EdgeDeviceSerializer(many=True, read_only=True)
     
     class Meta:
-        model = Event
+        model = EdgeEvent
         fields = '__all__'
+        
+    def create(): 
+        pass        

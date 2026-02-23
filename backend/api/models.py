@@ -3,7 +3,7 @@ import uuid
 from dashboard.models import CustomUser
 # Create your models here.
 
-class Device(models.Model):
+class EdgeDevice(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     TYPE_CHOICES = [
         ('pir_sensor', 'PIR Sensor'),
@@ -25,9 +25,9 @@ class Device(models.Model):
     location = models.CharField(max_length=20, choices=LOCATION_CHOICES, default='living_room')
 
     class Meta:
-        db_table = 'api_device'
+        db_table = 'api_edge_device'
 
-class Event(models.Model):
+class EdgeEvent(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     timestamp = models.DateTimeField(auto_now_add=True)
     ACTION_CHOICES = [
@@ -36,14 +36,19 @@ class Event(models.Model):
         ('laying_down', 'Laying Down'),
         ('reaching', 'Reaching'),
     ]
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='standing')
-    is_processed = models.BooleanField(default=False)
-    is_alert = models.BooleanField(default=False)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='standing', null=True, blank=True)
     device_state = models.JSONField(default=dict)
-    hub_device = models.ForeignKey(Device, on_delete=models.CASCADE)
+    hub_device = models.ForeignKey(EdgeDevice, on_delete=models.CASCADE)
+    keypoints = models.JSONField(default=dict)
     # inference_result storing a list
     inference_result = models.JSONField(default=list, blank=True)
     
+    is_processed = models.BooleanField(default=False)
+    is_alert = models.BooleanField(default=False)
+    is_resolved = models.BooleanField(default=False)
+    
+    
     class Meta:
-        db_table = 'api_event'
+        db_table = 'api_edge_event'
+        
         
