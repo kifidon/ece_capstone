@@ -46,7 +46,7 @@ class EdgeEvent(models.Model):
     is_processed = models.BooleanField(default=False)
     is_alert = models.BooleanField(default=False)
     is_resolved = models.BooleanField(default=False)
-    
+    is_deleted = models.BooleanField(default=False)
     
     class Meta:
         db_table = 'api_edge_event'
