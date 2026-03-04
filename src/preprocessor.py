@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-KEYPOINT_COLUMNS = [f"{name}_{axis}" for name in KEYPOINT_NAMES for axis in ("y", "x")]
+KEYPOINT_COLUMNS = [f"{name}_{axis}" for name in KEYPOINT_NAMES for axis in ("y", "x", "conf")]
 
 
 def _extract_video_id(frame_id: str) -> str:
@@ -35,70 +35,74 @@ def load_pose_csv(csv_path: str) -> pd.DataFrame:
     return df
 
 
-def split_train_test(
+def split_train_val_test(
     csv_path: str,
-    train_ratio: float = 0.8,
+    train_ratio: float = 0.70,
+    val_ratio: float = 0.15,
     random_state: int = 42,
-    train_path: str | None = None,
-    test_path: str | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Split pose CSV into train and test by video, stratified by class.
+    Split pose CSV into train, val, and test by video, stratified by class.
 
-    Frames from the same video stay together (all in train or all in test)
-    to avoid data leakage. Videos are split 80/20 (configurable) per class.
+    Frames from the same video stay together to avoid data leakage.
+    Videos are split 70/15/15 (configurable) per class.
 
     Args:
         csv_path: Path to the combined pose CSV.
-        train_ratio: Fraction of videos per class for training (default 0.8).
+        train_ratio: Fraction of videos per class for training (default 0.70).
+        val_ratio: Fraction of videos per class for validation (default 0.15).
         random_state: Random seed for reproducibility.
-        train_path: Optional path to save train CSV.
-        test_path: Optional path to save test CSV.
 
     Returns:
-        (train_df, test_df) with columns frame_id, video_id, keypoints, class_name.
+        (train_df, val_df, test_df).
     """
     df = load_pose_csv(csv_path)
 
     if df.empty:
         logger.warning("CSV is empty.")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     videos_per_class = df.groupby("class_name")["video_id"].apply(
         lambda x: x.drop_duplicates().tolist()
     ).to_dict()
 
     train_video_ids = set()
+    val_video_ids = set()
     test_video_ids = set()
 
     for class_name, video_ids in videos_per_class.items():
-        if len(video_ids) < 2:
+        if len(video_ids) < 3:
             logger.warning("Class %s has only %d video(s); all go to train.", class_name, len(video_ids))
             train_video_ids.update(video_ids)
             continue
-        train_ids, test_ids = train_test_split(
+
+        train_ids, remaining_ids = train_test_split(
             video_ids,
             train_size=train_ratio,
             random_state=random_state,
-            stratify=None,
+        )
+        relative_val = val_ratio / (1 - train_ratio)
+        val_ids, test_ids = train_test_split(
+            remaining_ids,
+            train_size=relative_val,
+            random_state=random_state,
         )
         train_video_ids.update(train_ids)
+        val_video_ids.update(val_ids)
         test_video_ids.update(test_ids)
 
     train_df = df[df["video_id"].isin(train_video_ids)].copy()
+    val_df = df[df["video_id"].isin(val_video_ids)].copy()
     test_df = df[df["video_id"].isin(test_video_ids)].copy()
 
-    logger.info("Split: %d train rows (%d videos), %d test rows (%d videos)",
-        len(train_df), len(train_video_ids), len(test_df), len(test_video_ids))
+    logger.info(
+        "Split: %d train (%d videos), %d val (%d videos), %d test (%d videos)",
+        len(train_df), len(train_video_ids),
+        len(val_df), len(val_video_ids),
+        len(test_df), len(test_video_ids),
+    )
 
-    if train_path:
-        train_df.to_csv(train_path, index=False)
-        logger.info("Saved train to %s", train_path)
-    if test_path:
-        test_df.to_csv(test_path, index=False)
-        logger.info("Saved test to %s", test_path)
-
-    return train_df, test_df
+    return train_df, val_df, test_df
 
 
 def get_features_and_labels(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
@@ -106,7 +110,9 @@ def get_features_and_labels(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     Extract keypoint features and labels from a preprocessed DataFrame.
 
     Returns:
-        (X, y) where X has shape (n_samples, 34) and y has shape (n_samples,).
+        (X, y) where X has shape (n_samples, 51) and y has shape (n_samples,).
+        X is a DataFrame with columns for each keypoint (y, x, confidence).
+        y is a Series with the class name for each sample.
     """
     X = df[KEYPOINT_COLUMNS].astype(float)
     y = df["class_name"]

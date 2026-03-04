@@ -1,0 +1,248 @@
+{
+  "cv_method": "LOVO",
+  "n_folds": 30,
+  "folds": [
+    {
+      "fold": 1,
+      "val_videos": [
+        "Lying01.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 6.509217200800776e-05
+    },
+    {
+      "fold": 2,
+      "val_videos": [
+        "Lying01dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 2.6626827093423344e-05
+    },
+    {
+      "fold": 3,
+      "val_videos": [
+        "Lying02.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.00012879152200184762
+    },
+    {
+      "fold": 4,
+      "val_videos": [
+        "Lying02dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 6.618436600547284e-05
+    },
+    {
+      "fold": 5,
+      "val_videos": [
+        "Lying03.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 2.0003581084893085e-05
+    },
+    {
+      "fold": 6,
+      "val_videos": [
+        "Lying04.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.00027942319866269827
+    },
+    {
+      "fold": 7,
+      "val_videos": [
+        "Lying05.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 9.751787729328498e-06
+    },
+    {
+      "fold": 8,
+      "val_videos": [
+        "Reaching01.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.010594363324344158
+    },
+    {
+      "fold": 9,
+      "val_videos": [
+        "Reaching01dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0006788435857743025
+    },
+    {
+      "fold": 10,
+      "val_videos": [
+        "Reaching02.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.002526058815419674
+    },
+    {
+      "fold": 11,
+      "val_videos": [
+        "Reaching02dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0007482757209800184
+    },
+    {
+      "fold": 12,
+      "val_videos": [
+        "Reaching03.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.020301230251789093
+    },
+    {
+      "fold": 13,
+      "val_videos": [
+        "Reaching03dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.04213816672563553
+    },
+    {
+      "fold": 14,
+      "val_videos": [
+        "Reaching04.1.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0004876792663708329
+    },
+    {
+      "fold": 15,
+      "val_videos": [
+        "Reaching04.2.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.00013921718345955014
+    },
+    {
+      "fold": 16,
+      "val_videos": [
+        "Reaching05.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.00015399658877868205
+    },
+    {
+      "fold": 17,
+      "val_videos": [
+        "Sitting01.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.08351653814315796
+    },
+    {
+      "fold": 18,
+      "val_videos": [
+        "Sitting02.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.00049223517999053
+    },
+    {
+      "fold": 19,
+      "val_videos": [
+        "Sitting02dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0036407022271305323
+    },
+    {
+      "fold": 20,
+      "val_videos": [
+        "Sitting03.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0017856955528259277
+    },
+    {
+      "fold": 21,
+      "val_videos": [
+        "Sitting04.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0021126801148056984
+    },
+    {
+      "fold": 22,
+      "val_videos": [
+        "Sitting04dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 9.986852091969922e-05
+    },
+    {
+      "fold": 23,
+      "val_videos": [
+        "Sitting05.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0005248879897408187
+    },
+    {
+      "fold": 24,
+      "val_videos": [
+        "Standing01.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.01683753915131092
+    },
+    {
+      "fold": 25,
+      "val_videos": [
+        "Standing02.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.003953260835260153
+    },
+    {
+      "fold": 26,
+      "val_videos": [
+        "Standing02dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.00028539588674902916
+    },
+    {
+      "fold": 27,
+      "val_videos": [
+        "Standing03.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.020144114270806313
+    },
+    {
+      "fold": 28,
+      "val_videos": [
+        "Standing04.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.0015449592610821128
+    },
+    {
+      "fold": 29,
+      "val_videos": [
+        "Standing04dupe.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 2.6062110919156112e-05
+    },
+    {
+      "fold": 30,
+      "val_videos": [
+        "Standing05.mp4"
+      ],
+      "val_accuracy": 1.0,
+      "val_loss": 0.008378833532333374
+    }
+  ],
+  "mean_accuracy": 1.0,
+  "std_accuracy": 0.0
+}

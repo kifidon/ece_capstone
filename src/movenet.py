@@ -65,7 +65,7 @@ class MoveNetProcessor:
             image: numpy array, shape (height, width, 3), dtype uint8.
 
         Returns:
-            keypoints: shape (17, 2) - 17 landmarks, each (y, x).
+            keypoints: shape (17, 3) - 17 landmarks, each (y, x, confidence).
         """
         keypoints_list = self._process_batch([image])
         return keypoints_list[0]
@@ -78,24 +78,28 @@ class MoveNetProcessor:
             images: list of numpy arrays, each shape (height, width, 3), dtype uint8.
 
         Returns:
-            keypoints_list: list of arrays, each shape (17, 2).
+            keypoints_list: list of arrays, each shape (17, 3) — (y, x, confidence).
         """
         if not images:
             return []
-        batch = tf.stack([tf.convert_to_tensor(img, dtype=tf.float32) for img in images])
-        batch = tf.image.resize_with_pad(batch, INPUT_SIZE, INPUT_SIZE)
-        batch = tf.cast(batch, dtype=tf.int32)
-        outputs = self.movenet(batch)
-        # output shape: (batch_size, 1, 17, 3)
-        kp = outputs["output_0"].numpy().squeeze(axis=1)[..., :2]
-        return [self._center_keypoints(kp[i]) for i in range(len(images))]
+        results = []
+        for img in images:
+            tensor = tf.convert_to_tensor(img, dtype=tf.float32)
+            tensor = tf.image.resize_with_pad(tensor[tf.newaxis], INPUT_SIZE, INPUT_SIZE)
+            tensor = tf.cast(tensor, dtype=tf.int32)
+            outputs = self.movenet(tensor)
+            kp = outputs["output_0"].numpy().squeeze(axis=(0, 1))
+            results.append(self._center_keypoints(kp))
+        return results
 
     def _center_keypoints(self, keypoints):
-        """Subtract hip midpoint from all keypoints for translation invariance."""
+        """Subtract hip midpoint from y,x columns; pass through confidence unchanged."""
         center = (
-            keypoints[LEFT_HIP_IDX] + keypoints[RIGHT_HIP_IDX]
+            keypoints[LEFT_HIP_IDX, :2] + keypoints[RIGHT_HIP_IDX, :2]
         ) / 2
-        return np.array(keypoints) - center
+        centered = np.array(keypoints, dtype=np.float64)
+        centered[:, :2] -= center
+        return centered
 
     def _process_video(self, video_path, classification=None, batch_size=BATCH_SIZE):
         """
@@ -107,7 +111,7 @@ class MoveNetProcessor:
             batch_size: Number of frames per batch (default 10).
 
         Yields:
-            Tuples of (frame_id, keypoints) where keypoints shape is (17, 2).
+            Tuples of (frame_id, keypoints) where keypoints shape is (17, 3).
         """
         video = cv2.VideoCapture(video_path)
         frame_buffer = []
@@ -178,8 +182,8 @@ class MoveNetProcessor:
             target_fps: Target framerate to downsample to (default 10).
 
         Returns:
-            JSON : {"frame_0": [[y,x], [y,x], ...], "frame_1": [...], ...}
-            Each frame has 17 keypoints, each as [y, x]. Same order as CSV/test data.
+            JSON : {"frame_0": [[y, x, conf], ...], "frame_1": [...], ...}
+            Each frame has 17 keypoints, each as [y, x, confidence].
         """
         step = max(1, int(source_fps / target_fps))
         video = cv2.VideoCapture(video_path)
@@ -208,7 +212,6 @@ class MoveNetProcessor:
             for kp in keypoints_list:
                 result[f"frame_{out_frame_idx}"] = kp.tolist()
                 out_frame_idx += 1
-                out_frame_idx += 1
 
         video.release()
         return result
@@ -225,7 +228,7 @@ class MoveNetProcessor:
         Build a CSV string from keypoints.
 
         Args:
-            keypoints_list: Single array (17, 2) or list of such arrays (one per frame).
+            keypoints_list: Single array (17, 3) or list of such arrays (one per frame).
             frame_ids: Optional frame id per row (list or single value).
             class_names: Optional class label per row (list or single value).
             include_headers: Whether to include header row.
@@ -246,7 +249,7 @@ class MoveNetProcessor:
 
         headers = ["frame_id"]
         for name in KEYPOINT_NAMES:
-            headers.extend([f"{name}_y", f"{name}_x"])
+            headers.extend([f"{name}_y", f"{name}_x", f"{name}_conf"])
         if include_class:
             headers.append("class_name")
         if include_headers:

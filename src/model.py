@@ -16,7 +16,7 @@ def build_mlp(
     Build a 3-layer MLP for pose classification.
 
     Args:
-        input_dim: Number of input features (34 for 17 keypoints × 2 coords).
+        input_dim: Number of input features (51 for 17 keypoints × 3: y, x, confidence).
         hidden_layers: Units per hidden layer (default 128, 64, 32).
         num_classes: Number of pose classes.
         dropout: Dropout rate between layers.
