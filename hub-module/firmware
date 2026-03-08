@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Raspberry Pi boot setup for hub Flask app.
+# Creates and enables a systemd service so app.py starts on boot.
+#
+# Usage:
+#   sudo bash firmware
+# Optional env vars:
+#   APP_DIR=/opt/hub-module
+#   PYTHON_BIN=/usr/bin/python3
+#   SERVICE_NAME=smarthub
+#   ENV_FILE=/etc/smarthub.env
+
+APP_DIR="${APP_DIR:-/opt/hub-module}"
+PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
+SERVICE_NAME="${SERVICE_NAME:-smarthub}"
+ENV_FILE="${ENV_FILE:-/etc/smarthub.env}"
+SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Run as root: sudo bash firmware"
+  exit 1
+fi
+
+if [[ ! -d "${APP_DIR}" ]]; then
+  echo "App directory not found: ${APP_DIR}"
+  echo "Set APP_DIR or move hub-module there before running."
+  exit 1
+fi
+
+if [[ ! -f "${APP_DIR}/app.py" ]]; then
+  echo "Expected Flask entrypoint at ${APP_DIR}/app.py"
+  exit 1
+fi
+
+if [[ ! -x "${PYTHON_BIN}" ]]; then
+  echo "Python executable not found/executable: ${PYTHON_BIN}"
+  exit 1
+fi
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  cat > "${ENV_FILE}" <<'EOF'
+BACKEND_URL=http://localhost:8000
+FIELD_ENCRYPTION_KEY=replace-with-your-fernet-key
+EOF
+  chmod 600 "${ENV_FILE}"
+  echo "Created ${ENV_FILE} (update values before production use)."
+fi
+
+cat > "${SERVICE_PATH}" <<EOF
+[Unit]
+Description=SmartHub Flask API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${APP_DIR}
+EnvironmentFile=${ENV_FILE}
+ExecStart=${PYTHON_BIN} ${APP_DIR}/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+chmod 644 "${SERVICE_PATH}"
+
+systemctl daemon-reload
+systemctl enable "${SERVICE_NAME}.service"
+systemctl restart "${SERVICE_NAME}.service"
+
+echo
+echo "Service installed and started: ${SERVICE_NAME}.service"
+echo "Check status:  sudo systemctl status ${SERVICE_NAME}.service"
+echo "View logs:     sudo journalctl -u ${SERVICE_NAME}.service -f"
