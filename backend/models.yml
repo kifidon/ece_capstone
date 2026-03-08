@@ -1,0 +1,13 @@
+models:
+  minimal:
+    name: poser
+    version: "1.01"
+    file: poser-1.01.keras
+    path: checkpoints/poser-1.01.keras
+    input_dim: 51
+    classes:
+      - lying
+      - reaching
+      - sitting
+      - standing
+    label_encoder: checkpoints/label_encoder.json

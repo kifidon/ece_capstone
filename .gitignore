@@ -18,3 +18,5 @@ build/
 .vscode/
 *.swp
 *.swo
+
+.env*

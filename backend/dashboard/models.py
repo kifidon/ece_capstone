@@ -1,11 +1,14 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from utils.fields import EncryptedCharField
 
 
 class CustomUser(AbstractUser):
     """Custom user model for Supabase-backed authentication."""
     address = models.CharField(max_length=200, null=True, blank=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
+    kasa_username = models.CharField(max_length=200, null=True, blank=True)
+    kasa_password = EncryptedCharField(max_length=500, null=True, blank=True)
     
 
     class Meta:
