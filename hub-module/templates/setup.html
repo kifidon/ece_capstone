@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SmartHub Setup</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, sans-serif; background: #f5f5f5; display: flex;
+               justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .card { background: white; border-radius: 12px; padding: 32px; max-width: 400px;
+                width: 100%; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+        h1 { font-size: 22px; margin-bottom: 4px; }
+        .serial { color: #888; font-size: 13px; margin-bottom: 24px; }
+        label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; margin-top: 16px; }
+        input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
+                font-size: 16px; outline: none; }
+        input:focus { border-color: #4A90D9; }
+        button { width: 100%; padding: 12px; background: #4A90D9; color: white; border: none;
+                 border-radius: 8px; font-size: 16px; font-weight: 600; margin-top: 24px; cursor: pointer; }
+        button:active { background: #3a7bc8; }
+        .status { text-align: center; margin-top: 16px; font-size: 14px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>SmartHub WiFi Setup</h1>
+        <p class="serial">Serial: {{ serial }}</p>
+        <form method="POST" action="/setup">
+            <label for="ssid">WiFi Network Name</label>
+            <input type="text" id="ssid" name="ssid" required placeholder="Your WiFi SSID">
+            <label for="password">WiFi Password</label>
+            <input type="password" id="password" name="password" required placeholder="Your WiFi password">
+            <button type="submit">Connect</button>
+        </form>
+        {% if status_msg %}
+        <p class="status">{{ status_msg }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>
