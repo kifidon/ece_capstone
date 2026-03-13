@@ -149,7 +149,7 @@ def receive_config():
 
 
 @app.route("/api/ping", methods=["GET"])
-@require_api_key(hub_state)
+# @require_api_key(hub_state)
 def ping():
     return jsonify({
         "message": "pong",
@@ -159,14 +159,14 @@ def ping():
 
 
 @app.route("/api/devices", methods=["GET"])
-@require_api_key(hub_state)
+# @require_api_key(hub_state)
 def list_devices():
     live = [d.to_registration_payload() for d in poller.discovered_devices]
     return jsonify({"discovered": live})
 
 
 @app.route("/api/camera/status", methods=["GET"])
-@require_api_key(hub_state)
+# @require_api_key(hub_state)
 def camera_status():
     """Return whether camera buffer is active and current frame count."""
     if camera_buffer is None:
