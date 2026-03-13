@@ -47,31 +47,33 @@ class EdgeEventProcessor():
     CLASSIFICATION_RULES = [
         {
             "action": "reaching",
-            "poses": ["Reaching"],
-            "device_match": lambda d: d["type"] == "pir_sensor" and not d.get("special_use") and d.get("sensed"),
+            "poses": ["reaching"],
+            "device_match": lambda d: d.get("device_type") == "pir_sensor" and not d.get("special_use") and d.get("sensed"),
         },
         {
             "action": "medicine",
-            "poses": ["Standing"],
-            "device_match": lambda d: d["type"] == "pir_sensor" and d.get("special_use") == "medicine_cabinet" and d.get("sensed"),
+            "poses": ["standing"],
+            "device_match": lambda d: d.get("device_type") == "pir_sensor" and d.get("special_use") == "medicine_cabinet" and d.get("sensed"),
         },
         {
             "action": "tv",
-            "poses": ["Sitting", "Lying"],
-            "device_match": lambda d: d["type"] == "smart_plug" and d.get("is_on"),
+            "poses": ["sitting", "lying"],
+            "device_match": lambda d: d.get("device_type") == "smart_plug" and d.get("is_on"),
         },
     ]
 
     def _rule_based_classification(self, data: dict) -> str:
         """
         Match the pose inference result against device states to determine the event action.
-        Iterates over all devices; the first matching rule wins.
+        Uses devices list: trigger device (with sensed=True) plus other devices. First matching rule wins.
         """
         devices = data.get("devices", [])
         action = "unknown"
+        pose = (self._inference_result or "").lower()
 
         for rule in self.CLASSIFICATION_RULES:
-            if self._inference_result in rule["poses"] and any(rule["device_match"](d) for d in devices):
+            poses_lower = [p.lower() for p in rule["poses"]]
+            if pose in poses_lower and any(rule["device_match"](d) for d in devices):
                 action = rule["action"]
                 break
 
@@ -84,11 +86,14 @@ class EdgeEventProcessor():
         """
         keypoints = data.get("keypoints", {})
         keypoints = self._normalize_keypoints(keypoints)
-        self._predictions = self._pose_estimator.predict(keypoints)
-        self._inference_result = self._pose_estimator.classify_pose(self._predictions)
+        preds = self._pose_estimator.predict(keypoints)
+        self._predictions = preds if isinstance(preds, list) else preds.tolist()
+        self._inference_result = self._pose_estimator.classify_pose(
+            np.array(self._predictions)
+        )
         action = self._rule_based_classification(data)
         return {
-            "inference_result": self._predictions.tolist(),
+            "inference_result": self._predictions,
             "pose_classification": self._inference_result,
             "action": action,
             "keypoints": keypoints.tolist(),
@@ -172,9 +177,16 @@ def process_event(event_id: str) -> None:
         logger.error("Event %s not found", event_id)
         return
 
+    # Use raw PIR payload from trigger_device; add device_type and sensed in backend for rule matching
+    devices = list(event.device_state) if isinstance(event.device_state, list) else []
+    trigger = event.trigger_device
+    if isinstance(trigger, dict) and trigger:
+        trigger = {"device_type": "pir_sensor", **trigger, "sensed": True}
+        devices = [trigger] + devices
+
     data = {
         "keypoints": event.keypoints,
-        "devices": event.device_state,
+        "devices": devices,
     }
 
     processor = EdgeEventProcessor()

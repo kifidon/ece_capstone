@@ -7,7 +7,7 @@ from tensorflow import keras
 from sklearn.preprocessing import LabelEncoder
 import yaml
 
-with open(os.path.join(os.path.dirname(__file__), "../../../models.yml"), "r") as f:
+with open(os.path.join(os.path.dirname(__file__), "../../models.yml"), "r") as f:
     models = yaml.safe_load(f)["models"]
 logger = logging.getLogger(__name__)
 

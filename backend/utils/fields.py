@@ -12,6 +12,7 @@ def _get_fernet():
             "settings.FIELD_ENCRYPTION_KEY is not set. "
             "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
         )
+    key = key.strip() if isinstance(key, str) else (key.strip() if isinstance(key, bytes) else key)
     if isinstance(key, str):
         key = key.encode()
     return Fernet(key)

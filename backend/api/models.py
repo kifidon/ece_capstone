@@ -25,14 +25,14 @@ class EdgeDevice(models.Model):
         ('office', 'Office'),
         ('garage', 'Garage'),
     ]
-    location = models.CharField(max_length=20, choices=LOCATION_CHOICES, default='living_room')
+    location = models.CharField(max_length=20, choices=LOCATION_CHOICES, default='living_room', null=True, blank=True)
     SPECIAL_USE_CHOICES = [
         ('medicine_cabinet', 'Medicine Cabinet'),
     ]
     special_use = models.CharField(max_length=20, choices=SPECIAL_USE_CHOICES, null=True, blank=True)
 
     serial_number = models.CharField(max_length=50, unique=True)
-    api_key = EncryptedCharField(max_length=500, default=secrets.token_urlsafe, unique=True)
+    api_key = EncryptedCharField(max_length=500, default=secrets.token_urlsafe, unique=True, null=True, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     is_provisioned = models.BooleanField(default=False) # if True, the device has been provisioned with a user's credentials 
 
@@ -52,6 +52,8 @@ class EdgeEvent(models.Model):
     device_state = models.JSONField(default=dict)
     keypoints = models.JSONField(default=dict)
     hub_device = models.ForeignKey(EdgeDevice, on_delete=models.CASCADE)
+    # Device that triggered the event (e.g. PIR that fired). Same shape as device_state items: device_type, serial_number, ...
+    trigger_device = models.JSONField(null=True, blank=True)
     
     # Event Metadata for calculation observation. 
     inference_result = models.JSONField(default=list, blank=True)

@@ -142,7 +142,7 @@ def register_discovered_devices(request, hub):
         device, was_created = EdgeDevice.objects.update_or_create(
             serial_number=serial,
             defaults={
-                "type": dev_data.get("device_type", "pir_sensor"),
+                "device_type": dev_data.get("device_type", "pir_sensor"),
                 "hub_device": hub,
                 "user": hub.user,
                 "battery_level": dev_data.get("battery_level"),
