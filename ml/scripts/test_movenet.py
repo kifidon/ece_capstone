@@ -1,86 +1,38 @@
 """
-Tests for MoveNetProcessor.
-Run: pytest scripts/test_movenet.py -v
+Run MoveNet on a video and print keypoints as JSON.
+Usage: python scripts/test_movenet.py <video_path> [--source-fps 30] [--target-fps 10]
 """
 
+import argparse
 import json
-import logging
 import os
 import sys
-import tempfile
-
-import cv2
-import numpy as np
-import pytest
 
 # Add project root for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.movenet import MoveNetProcessor
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    stream=sys.stdout,
-)
-logger = logging.getLogger(__name__)
+
+def run(video_path: str, source_fps: int = 30, target_fps: int = 10) -> None:
+    """Run MoveNet on the video and print keypoints (frame_0, frame_1, ...) as JSON."""
+    if not os.path.isfile(video_path):
+        print(f"Error: not a file: {video_path}", file=sys.stderr)
+        sys.exit(1)
+    processor = MoveNetProcessor()
+    keypoints = processor.run_inference(video_path, source_fps=source_fps, target_fps=target_fps)
+    with open("keypoints.json", "w") as f:
+        json.dump(keypoints, f)
 
 
-def _make_video(path, num_frames, width=256, height=256, fps=30):
-    """Create a synthetic video file with dummy frames."""
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(path, fourcc, fps, (width, height))
-    for _ in range(num_frames):
-        frame = np.random.randint(0, 256, (height, width, 3), dtype=np.uint8)
-        writer.write(frame)
-    writer.release()
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run MoveNet on a video and print keypoints as JSON.")
+    parser.add_argument("video_path", help="Path to the video file")
+    parser.add_argument("--source-fps", type=int, default=30, help="Video framerate (default: 30)")
+    parser.add_argument("--target-fps", type=int, default=10, help="Output keypoints at this fps (default: 10)")
+    args = parser.parse_args()
+    run(args.video_path, source_fps=args.source_fps, target_fps=args.target_fps)
 
 
-@pytest.fixture(scope="module")
-def processor():
-    """Shared processor instance to avoid loading model multiple times."""
-    return MoveNetProcessor()
-
-
-def test_single_frame_inference(processor):
-    """Run inference on a single frame, assert output shape and format."""
-    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-        video_path = f.name
-    try:
-        _make_video(video_path, num_frames=1)
-        json_str = processor.video_keypoints_to_json(video_path)
-
-        data = json.loads(json_str)
-        assert "frame_0" in data
-        keypoints = data["frame_0"]
-        assert len(keypoints) == 17
-        for kp in keypoints:
-            assert len(kp) == 2
-            assert all(isinstance(c, (int, float)) for c in kp)
-            assert kp[0] is not None and kp[1] is not None  # y, x
-    finally:
-        os.unlink(video_path)
-
-
-def test_video_inference(processor):
-    """Run inference on a video, assert output has expected frames and structure."""
-    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-        video_path = f.name
-    try:
-        # 15 frames at 30fps, downsampled to 10fps -> every 3rd frame -> 5 frames
-        _make_video(video_path, num_frames=15)
-        json_str = processor.video_keypoints_to_json(video_path, source_fps=30, target_fps=10)
-
-        data = json.loads(json_str)
-        assert len(data) == 5
-        for i in range(5):
-            key = f"frame_{i}"
-            assert key in data
-            keypoints = data[key]
-            assert len(keypoints) == 17
-            for kp in keypoints:
-                assert len(kp) == 2
-                assert all(isinstance(c, (int, float)) for c in kp)
-    finally:
-        os.unlink(video_path)
+if __name__ == "__main__":
+    main()

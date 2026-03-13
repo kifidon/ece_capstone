@@ -15,6 +15,9 @@ from decorators import require_api_key
 from callbacks import on_wifi_connected, on_wifi_failed, apply_config
 from captive_portal import captive_portal_bp, init_captive_portal
 from camera_buffer import from_env as camera_buffer_from_env
+from api import api_bp, init_api as init_api_blueprint
+from movenet import movenet as movenet_processor
+
 
 # Log to file (and keep console for systemd/journal)
 LOG_FILE = os.environ.get("HUB_LOG_FILE", "/var/log/smarthub.log")
@@ -49,7 +52,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
-ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY")
+_raw_key = os.environ.get("FIELD_ENCRYPTION_KEY")
+ENCRYPTION_KEY = _raw_key.strip() if _raw_key else None
 
 
 def get_serial_number() -> str:
@@ -90,6 +94,8 @@ _on_wifi_failed = partial(on_wifi_failed, hub_state)
 
 init_captive_portal(HUB_SERIAL, hub_state, wifi, poller, _on_wifi_connected, _on_wifi_failed)
 app.register_blueprint(captive_portal_bp)
+init_api_blueprint(camera_buffer=camera_buffer, movenet_processor=movenet_processor, poller=poller)
+app.register_blueprint(api_bp, url_prefix="/api")
 
 
 def init():

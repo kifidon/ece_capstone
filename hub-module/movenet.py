@@ -7,6 +7,7 @@ import csv
 import io
 import logging
 
+from camera_buffer import CameraRingBuffer
 logger = logging.getLogger(__name__)
 
 INPUT_SIZE = 256
@@ -42,7 +43,7 @@ class MoveNetProcessor:
         model = hub.load(url)
         return model.signatures["serving_default"]
 
-    def _process_batch(self, images):
+    def _process_batch(self, images, centered=False):
         """
         Run pose estimation on a batch of images.
 
@@ -61,7 +62,10 @@ class MoveNetProcessor:
             tensor = tf.cast(tensor, dtype=tf.int32)
             outputs = self.movenet(tensor)
             kp = outputs["output_0"].numpy().squeeze(axis=(0, 1))
-            results.append(self._center_keypoints(kp))
+            if centered: 
+                results.append(self._center_keypoints(kp))
+            else:
+                results.append(kp)
         return results
 
     def _center_keypoints(self, keypoints):
@@ -150,7 +154,7 @@ class MoveNetProcessor:
         video.release()
         return result
     
-    def run_inference(self, camera, source_fps=30, target_fps=10):
+    def run_inference(self, camera: CameraRingBuffer, source_fps=30, target_fps=10):
         step = max(1, int(source_fps / target_fps))
         frame_id = 0
         buffer = camera.get_buffer(seconds=10)

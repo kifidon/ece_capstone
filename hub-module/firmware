@@ -45,8 +45,8 @@ fi
 if [[ ! -f "${ENV_FILE}" ]]; then
   cat > "${ENV_FILE}" <<'EOF'
 BACKEND_URL=http://localhost:8000
-FIELD_ENCRYPTION_KEY=replace-with-your-fernet-key
-HUB_SKIP_AP=1
+FIELD_ENCRYPTION_KEY=FUTnufJ1Ac1mD_gX7qLoAvGiBvNTkrBPTCHz8v1TEeQ=
+HUB_SKIP_AP=0
 EOF
   chmod 600 "${ENV_FILE}"
   echo "Created ${ENV_FILE} (update values before production use)."

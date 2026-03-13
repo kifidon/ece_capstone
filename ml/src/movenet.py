@@ -70,13 +70,13 @@ class MoveNetProcessor:
         keypoints_list = self._process_batch([image])
         return keypoints_list[0]
 
-    def _process_batch(self, images):
+    def _process_batch(self, images, centered=False):
         """
         Run pose estimation on a batch of images.
 
         Args:
             images: list of numpy arrays, each shape (height, width, 3), dtype uint8.
-
+            centered: Whether to center the keypoints around the hip midpoint.
         Returns:
             keypoints_list: list of arrays, each shape (17, 3) — (y, x, confidence).
         """
@@ -89,7 +89,10 @@ class MoveNetProcessor:
             tensor = tf.cast(tensor, dtype=tf.int32)
             outputs = self.movenet(tensor)
             kp = outputs["output_0"].numpy().squeeze(axis=(0, 1))
-            results.append(self._center_keypoints(kp))
+            if centered: 
+                results.append(self._center_keypoints(kp))
+            else:
+                results.append(kp)
         return results
 
     def _center_keypoints(self, keypoints):

@@ -20,12 +20,16 @@ class Device:
         self.battery_level = None
         self.alias = None
         self.is_on = None
+        self.last_seen = time.time()
 
     def to_registration_payload(self) -> dict:
         return {
             "device_type": self.device_type,
             "serial_number": self.serial_number,
             "battery_level": self.battery_level,
+            "last_seen": self.last_seen,
+            "alias": self.alias,
+            "is_on": self.is_on,
         }
 
     def __repr__(self):
@@ -95,6 +99,11 @@ class DevicePoller:
 
             except Exception as e:
                 logger.error(f"Error receiving PIR broadcast: {e}")
+                
+    def get_devices(self, device_type: str | None = None) -> list[Device]:
+        if device_type is None:
+            return self.discovered_devices
+        return [d for d in self.discovered_devices if d.device_type == device_type]
 
     # --- Send WiFi credentials to PIR devices ---
 
@@ -181,6 +190,52 @@ class DevicePoller:
 
         plug_count = len([d for d in self.discovered_devices if d.device_type == "smart_plug"])
         logger.info(f"Kasa discovery complete. {plug_count} plug(s) total.")
+
+    async def _fetch_kasa_plug_status(self, device: Device) -> dict | None:
+        """Query a single Kasa plug by IP; returns current state or None on failure."""
+        if not device.local_ip or self.kasa_credentials is None:
+            return None
+        try:
+            kasa_dev = await Discover.discover_single(
+                device.local_ip,
+                credentials=self.kasa_credentials,
+            )
+            await kasa_dev.update() 
+            device.last_seen = time.time()
+            device.is_on = bool(getattr(kasa_dev, "is_on", None))
+            return device.to_registration_payload()
+        
+        except Exception as e:
+            logger.warning(f"Failed to fetch status for {device.serial_number} at {device.local_ip}: {e}")
+            return None
+
+    def get_device_status(self, device: Device) -> dict:
+        """
+        Actively poll the device's current status. For smart_plug, connects to the
+        device by IP and fetches fresh state; for pir_sensor, returns last-known state
+        (PIRs push updates via UDP, there is no on-demand query).
+        """
+        if device.device_type == "smart_plug":
+            loop = asyncio.new_event_loop()
+            try:
+                status = loop.run_until_complete(self._fetch_kasa_plug_status(device))
+                if status is None:
+                    raise RuntimeError(f"Failed to fetch status for {device.serial_number} at {device.local_ip}")
+                return status
+            
+            finally:
+                loop.close()
+        elif device.device_type == "pir_sensor":
+            return device.to_registration_payload()
+        else:
+            raise ValueError(f"Invalid device type: {device.device_type}")
+
+
+    def get_device_by_serial(self, serial_number: str) -> Device:
+        for device in self.discovered_devices:
+            if device.serial_number == serial_number:
+                return device
+        raise ValueError(f"Device not found: {serial_number}")
 
     def stop(self):
         if self._sock:
