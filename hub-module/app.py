@@ -95,13 +95,17 @@ app.register_blueprint(captive_portal_bp)
 def init():
     """
     Startup sequence:
-    1. Start WiFi AP (captive portal for user to enter WiFi creds + PIR sensor provisioning)
+    1. Start WiFi AP (unless HUB_SKIP_AP=1) — captive portal for WiFi creds + PIR provisioning
     2. Start PIR sensor listener and Kasa poller background threads
-    Hub stays in AP mode until user submits WiFi credentials via the captive portal.
+    When HUB_SKIP_AP=1 (e.g. Pi already on WiFi), skip AP and run API + threads only.
     """
     logger.info("=== Hub Init ===")
 
-    wifi.start_ap()
+    skip_ap = os.environ.get("HUB_SKIP_AP", "").lower() in ("1", "true", "yes")
+    if skip_ap:
+        logger.info("HUB_SKIP_AP set; skipping WiFi AP (running on existing network).")
+    else:
+        wifi.start_ap()
 
     threading.Thread(target=poller.start_pir_listener, daemon=True).start()
     threading.Thread(target=poller.start_kasa_poller, daemon=True).start()
@@ -171,22 +175,6 @@ def camera_status():
         "enabled": True,
         "frames": camera_buffer.get_frame_count(),
     })
-
-
-@app.route("/api/camera/save", methods=["POST"])
-@require_api_key(hub_state)
-def camera_save():
-    """Write the current rolling buffer to a file (e.g. on event). Body: {"path": "/tmp/clip.mp4"}."""
-    if camera_buffer is None:
-        return jsonify({"error": "Camera buffer not enabled"}), 400
-    data = request.get_json() or {}
-    path = data.get("path") or request.form.get("path")
-    if not path:
-        return jsonify({"error": "Missing path"}), 400
-    if camera_buffer.save_buffer(path):
-        return jsonify({"ok": True, "path": path})
-    return jsonify({"error": "Buffer empty or save failed"}), 500
-
 
 @app.errorhandler(404)
 def not_found(error):
