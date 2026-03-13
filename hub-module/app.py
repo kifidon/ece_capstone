@@ -2,6 +2,7 @@ import json
 import os
 import platform
 import logging
+import logging.handlers
 import threading
 from functools import partial
 
@@ -13,8 +14,36 @@ from wifi import WifiManager
 from decorators import require_api_key
 from callbacks import on_wifi_connected, on_wifi_failed, apply_config
 from captive_portal import captive_portal_bp, init_captive_portal
+from camera_buffer import from_env as camera_buffer_from_env
 
-logging.basicConfig(level=logging.INFO)
+# Log to file (and keep console for systemd/journal)
+LOG_FILE = os.environ.get("HUB_LOG_FILE", "/var/log/smarthub.log")
+LOG_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+LOG_BACKUP_COUNT = 5
+
+_root = logging.getLogger()
+_root.setLevel(logging.INFO)
+_fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+_console = logging.StreamHandler()
+_console.setFormatter(_fmt)
+_root.addHandler(_console)
+
+try:
+    _file = logging.handlers.RotatingFileHandler(
+        LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
+    )
+    _file.setFormatter(_fmt)
+    _root.addHandler(_file)
+except OSError:
+    _fallback = os.path.join(os.getcwd(), "smarthub.log")
+    _file = logging.handlers.RotatingFileHandler(
+        _fallback, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
+    )
+    _file.setFormatter(_fmt)
+    _root.addHandler(_file)
+    logging.getLogger(__name__).warning(f"Cannot write to {LOG_FILE}, using {_fallback}")
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -47,6 +76,7 @@ logger.info(f"Hub serial: {HUB_SERIAL} (platform: {platform.system()})")
 
 poller = DevicePoller()
 wifi = WifiManager(HUB_SERIAL)
+camera_buffer = camera_buffer_from_env()
 
 hub_state = {
     "api_key": None,
@@ -75,6 +105,8 @@ def init():
 
     threading.Thread(target=poller.start_pir_listener, daemon=True).start()
     threading.Thread(target=poller.start_kasa_poller, daemon=True).start()
+    if camera_buffer is not None:
+        camera_buffer.start()
 
 
 # --- API Routes (served after hub joins home WiFi) ---
@@ -127,6 +159,33 @@ def ping():
 def list_devices():
     live = [d.to_registration_payload() for d in poller.discovered_devices]
     return jsonify({"discovered": live})
+
+
+@app.route("/api/camera/status", methods=["GET"])
+@require_api_key(hub_state)
+def camera_status():
+    """Return whether camera buffer is active and current frame count."""
+    if camera_buffer is None:
+        return jsonify({"enabled": False, "frames": 0})
+    return jsonify({
+        "enabled": True,
+        "frames": camera_buffer.get_frame_count(),
+    })
+
+
+@app.route("/api/camera/save", methods=["POST"])
+@require_api_key(hub_state)
+def camera_save():
+    """Write the current rolling buffer to a file (e.g. on event). Body: {"path": "/tmp/clip.mp4"}."""
+    if camera_buffer is None:
+        return jsonify({"error": "Camera buffer not enabled"}), 400
+    data = request.get_json() or {}
+    path = data.get("path") or request.form.get("path")
+    if not path:
+        return jsonify({"error": "Missing path"}), 400
+    if camera_buffer.save_buffer(path):
+        return jsonify({"ok": True, "path": path})
+    return jsonify({"error": "Buffer empty or save failed"}), 500
 
 
 @app.errorhandler(404)

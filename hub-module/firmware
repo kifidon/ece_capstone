@@ -77,3 +77,4 @@ echo
 echo "Service installed and started: ${SERVICE_NAME}.service"
 echo "Check status:  sudo systemctl status ${SERVICE_NAME}.service"
 echo "View logs:     sudo journalctl -u ${SERVICE_NAME}.service -f"
+echo "Log file:      /var/log/smarthub.log (tail -f /var/log/smarthub.log)"

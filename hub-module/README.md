@@ -76,6 +76,12 @@ If WiFi connection fails, the AP restarts and the user sees a retry page.
 |---|---|
 | `BACKEND_URL` | Django backend URL (default: `http://localhost:8000`) |
 | `FIELD_ENCRYPTION_KEY` | Fernet symmetric key shared with backend for encrypting config payloads in transit |
+| `HUB_LOG_FILE` | Log file path (default: `/var/log/smarthub.log`). Rotating, 2 MB × 5 backups. |
+| `HUB_CAMERA_ENABLED` | Set to `1` to enable USB camera rolling buffer (default: off). |
+| `HUB_CAMERA_DEVICE` | Camera device index or path (default: `0`). |
+| `HUB_CAMERA_BUFFER_S` | Seconds to keep in ring buffer (default: `10`). |
+| `HUB_CAMERA_FPS` | Capture rate in fps (default: `30`). |
+| `HUB_CAMERA_WIDTH` / `HUB_CAMERA_HEIGHT` | Frame size (default: 640×480). |
 
 ## Security
 
@@ -103,6 +109,7 @@ flask
 requests
 python-kasa
 cryptography
+opencv-python-headless>=4.8.0
 ```
 
 ## Running Locally
