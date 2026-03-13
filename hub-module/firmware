@@ -6,11 +6,14 @@ set -euo pipefail
 #
 # Usage:
 #   sudo bash firmware
-# Optional env vars:
-#   APP_DIR=/opt/hub-module
-#   PYTHON_BIN=/usr/bin/python3
+# Optional env vars (set before running sudo bash firmware):
+#   APP_DIR=/path/to/hub-module     (default: /opt/hub-module)
+#   PYTHON_BIN=/path/to/python     (default: /usr/bin/python3; use venv: /home/user/ece_capstone/venv/bin/python)
 #   SERVICE_NAME=smarthub
 #   ENV_FILE=/etc/smarthub.env
+#
+# Example with venv and repo in home dir:
+#   sudo APP_DIR=/home/hub-module/ece_capstone/hub-module PYTHON_BIN=/home/hub-module/ece_capstone/venv/bin/python bash firmware
 
 APP_DIR="${APP_DIR:-/opt/hub-module}"
 PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
@@ -43,6 +46,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   cat > "${ENV_FILE}" <<'EOF'
 BACKEND_URL=http://localhost:8000
 FIELD_ENCRYPTION_KEY=replace-with-your-fernet-key
+HUB_SKIP_AP=1
 EOF
   chmod 600 "${ENV_FILE}"
   echo "Created ${ENV_FILE} (update values before production use)."
