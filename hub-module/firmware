@@ -26,6 +26,28 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+# Install hostapd and dnsmasq for WiFi AP / captive portal (Raspberry Pi OS / Debian)
+if command -v apt-get &>/dev/null; then
+  apt-get update -qq
+  apt-get install -y hostapd dnsmasq
+else
+  echo "Warning: apt-get not found; install hostapd and dnsmasq manually for AP mode."
+fi
+
+# So hostapd can use wlan0 for AP, tell NetworkManager not to manage it
+NM_CONF_DIR="/etc/NetworkManager/conf.d"
+NM_UNMANAGE_CONF="${NM_CONF_DIR}/10-unmanage-wlan0.conf"
+if [[ -d "${NM_CONF_DIR}" ]] && [[ ! -f "${NM_UNMANAGE_CONF}" ]]; then
+  cat > "${NM_UNMANAGE_CONF}" <<'NMEOF'
+[keyfile]
+unmanaged-devices=interface-name:wlan0
+NMEOF
+  echo "Created ${NM_UNMANAGE_CONF} (wlan0 unmanaged for AP)."
+  if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    systemctl restart NetworkManager
+  fi
+fi
+
 if [[ ! -d "${APP_DIR}" ]]; then
   echo "App directory not found: ${APP_DIR}"
   echo "Set APP_DIR or move hub-module there before running."

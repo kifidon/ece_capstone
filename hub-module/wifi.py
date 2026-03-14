@@ -72,6 +72,9 @@ class WifiManager:
         with open("/tmp/dnsmasq.conf", "w") as f:
             f.write(dnsmasq_conf)
 
+        # Reset interface so driver releases previous mode (avoids "Match already configured")
+        self._run(["sudo", "ip", "link", "set", AP_INTERFACE, "down"], check=False)
+        self._run(["sudo", "iw", "dev", AP_INTERFACE, "set", "type", "__ap"], check=False)
         self._run(["sudo", "ip", "link", "set", AP_INTERFACE, "up"])
         self._run(["sudo", "ip", "addr", "flush", "dev", AP_INTERFACE])
         self._run(["sudo", "ip", "addr", "add", f"{AP_IP}/24", "dev", AP_INTERFACE])
