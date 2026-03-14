@@ -86,6 +86,23 @@ class WifiManager:
         self._run(["sudo", "hostapd", "-B", "/tmp/hostapd.conf"])
         self._run(["sudo", "dnsmasq", "-C", "/tmp/dnsmasq.conf"])
 
+        # Redirect port 80 -> 5050 so OS captive portal checks (which use :80) hit our app and trigger the popup
+        self._run(
+            [
+                "sudo", "iptables", "-t", "nat", "-D", "PREROUTING",
+                "-i", AP_INTERFACE, "-p", "tcp", "--dport", "80",
+                "-j", "REDIRECT", "--to-ports", "5050",
+            ],
+            check=False,
+        )
+        self._run(
+            [
+                "sudo", "iptables", "-t", "nat", "-A", "PREROUTING",
+                "-i", AP_INTERFACE, "-p", "tcp", "--dport", "80",
+                "-j", "REDIRECT", "--to-ports", "5050",
+            ],
+        )
+
         self.is_ap_active = True
         logger.info(f"AP '{self.ap_ssid}' is active. Captive portal at http://{AP_IP}:5050/")
 
@@ -94,6 +111,14 @@ class WifiManager:
             return
 
         logger.info("Stopping WiFi AP...")
+        self._run(
+            [
+                "sudo", "iptables", "-t", "nat", "-D", "PREROUTING",
+                "-i", AP_INTERFACE, "-p", "tcp", "--dport", "80",
+                "-j", "REDIRECT", "--to-ports", "5050",
+            ],
+            check=False,
+        )
         self._run(["sudo", "killall", "hostapd"], check=False)
         self._run(["sudo", "killall", "dnsmasq"], check=False)
         self._run(["sudo", "ip", "addr", "flush", "dev", AP_INTERFACE], check=False)
