@@ -29,7 +29,15 @@ class WifiManager:
             logger.info(f"[macOS stub] Would run: {' '.join(cmd)}")
             return
         logger.info(f"Running: {' '.join(cmd)}")
-        subprocess.run(cmd, check=check, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            if result.stderr:
+                logger.error("%s stderr: %s", cmd[0], result.stderr.strip())
+            if result.stdout:
+                logger.error("%s stdout: %s", cmd[0], result.stdout.strip())
+            if check:
+                raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+        return result
 
     def start_ap(self):
         """Create WiFi AP with DNS redirect so all traffic hits the captive portal."""

@@ -112,7 +112,10 @@ def init():
     if skip_ap:
         logger.info("HUB_SKIP_AP set; skipping WiFi AP (running on existing network).")
     else:
-        wifi.start_ap()
+        try:
+            wifi.start_ap()
+        except Exception as e:
+            logger.warning("Failed to start WiFi AP (hub will run on existing network): %s", e)
 
     threading.Thread(target=poller.start_pir_listener, daemon=True).start()
     threading.Thread(target=poller.start_kasa_poller, daemon=True).start()
