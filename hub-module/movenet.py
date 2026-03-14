@@ -77,39 +77,28 @@ class MoveNetProcessor:
         centered[:, :2] -= center
         return centered
 
-    def _process_video(self, video_path, classification=None, batch_size=BATCH_SIZE):
+    def _process_video(self, video_path, classification=None):
         """
-        Run pose estimation on a video file in batches of frames.
+        Run pose estimation on a video file, one frame at a time.
 
         Args:
             video_path: Path to the video file.
             classification: Optional class label for each frame (same for all frames).
-            batch_size: Number of frames per batch (default 10).
 
         Yields:
             Tuples of (frame_id, keypoints) where keypoints shape is (17, 3).
         """
         video = cv2.VideoCapture(video_path)
-        frame_buffer = []
         frame_id = 0
 
         while True:
             ret, frame = video.read()
             if not ret:
                 break
-            frame_buffer.append(frame)
-            if len(frame_buffer) == batch_size:
-                keypoints_list = self._process_batch(frame_buffer)
-                for i, kp in enumerate(keypoints_list):
-                    yield frame_id - len(frame_buffer) + i, kp
-                frame_buffer = []
+            keypoints_list = self._process_batch([frame])
+            if keypoints_list:
+                yield frame_id, keypoints_list[0]
             frame_id += 1
-
-        if frame_buffer:
-            keypoints_list = self._process_batch(frame_buffer)
-            start_id = frame_id - len(frame_buffer)
-            for i, kp in enumerate(keypoints_list):
-                yield start_id + i, kp
 
         video.release()
 
