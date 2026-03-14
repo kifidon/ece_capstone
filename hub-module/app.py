@@ -106,8 +106,9 @@ def init():
     When HUB_SKIP_AP=1 (e.g. Pi already on WiFi), skip AP and run API + threads only.
     """
     logger.info("=== Hub Init ===")
-
-    skip_ap = os.environ.get("HUB_SKIP_AP", "").lower() in ("1", "true", "yes")
+    _skip_ap_raw = os.environ.get("HUB_SKIP_AP", "<unset>")
+    logger.info("HUB_SKIP_AP=%r", _skip_ap_raw)
+    skip_ap = str(_skip_ap_raw).lower() in ("1", "true", "yes")
     if skip_ap:
         logger.info("HUB_SKIP_AP set; skipping WiFi AP (running on existing network).")
     else:
