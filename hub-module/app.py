@@ -10,7 +10,7 @@ from cryptography.fernet import Fernet
 from flask import Flask, jsonify, request
 
 from poller import DevicePoller
-from wifi import WifiManager
+from wifi_manager import WifiManager
 from decorators import require_api_key
 from callbacks import on_wifi_connected, on_wifi_failed, apply_config
 from captive_portal import captive_portal_bp, init_captive_portal
