@@ -29,7 +29,7 @@ fi
 # Install hostapd and dnsmasq for WiFi AP / captive portal (Raspberry Pi OS / Debian)
 if command -v apt-get &>/dev/null; then
   apt-get update -qq
-  apt-get install -y hostapd dnsmasq
+  apt-get install -y hostapd dnsmasq iptables
 else
   echo "Warning: apt-get not found; install hostapd and dnsmasq manually for AP mode."
 fi

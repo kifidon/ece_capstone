@@ -1,3 +1,4 @@
+import os
 import subprocess
 import logging
 import platform
@@ -133,6 +134,20 @@ class WifiManager:
             logger.info(f"[macOS stub] Would connect to '{ssid}'")
             return True
 
+        # wlan0 is normally "unmanaged" so hostapd can use it for AP. For connecting to
+        # home WiFi we need NM to manage it: remove the unmanage config and reload NM.
+        nm_unmanage = "/etc/NetworkManager/conf.d/10-unmanage-wlan0.conf"
+        if os.path.isfile(nm_unmanage):
+            try:
+                os.remove(nm_unmanage)
+                subprocess.run(
+                    ["sudo", "systemctl", "reload", "NetworkManager"],
+                    check=True, capture_output=True, text=True,
+                )
+                time.sleep(2)
+            except Exception as e:
+                logger.warning("Could not make wlan0 managed: %s", e)
+
         try:
             result = subprocess.run(
                 ["sudo", "nmcli", "device", "wifi", "connect", ssid,
@@ -142,7 +157,19 @@ class WifiManager:
             logger.info(f"Connected to {ssid}")
             return True
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to connect to {ssid}: {e.stderr}")
+            logger.error(f"Failed to connect to {ssid}: %s", e.stderr or e.stdout or e)
+            # Re-create unmanage config so next start_ap() can use wlan0 again
+            if not os.path.isfile(nm_unmanage):
+                try:
+                    os.makedirs(os.path.dirname(nm_unmanage), exist_ok=True)
+                    with open(nm_unmanage, "w") as f:
+                        f.write("[keyfile]\nunmanaged-devices=interface-name:wlan0\n")
+                    subprocess.run(
+                        ["sudo", "systemctl", "reload", "NetworkManager"],
+                        check=False, capture_output=True, text=True,
+                    )
+                except Exception:
+                    pass
             return False
 
     def provision_and_switch(self, wifi_ssid: str, wifi_password: str, pir_devices: list, on_connected=None, on_failed=None):
