@@ -205,9 +205,13 @@ class WifiManager:
         time.sleep(2)
 
         def do_connect():
+            # Explicit key-mgmt avoids "802-11-wireless-security.key-mgmt: property is missing"
             return subprocess.run(
-                ["sudo", "nmcli", "device", "wifi", "connect", ssid,
-                 "password", password, "ifname", AP_INTERFACE],
+                [
+                    "sudo", "nmcli", "device", "wifi", "connect", ssid,
+                    "password", password, "ifname", AP_INTERFACE,
+                    "--", "wifi-sec.key-mgmt", "wpa-psk",
+                ],
                 check=False, capture_output=True, text=True, timeout=30,
             )
 

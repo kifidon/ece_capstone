@@ -9,8 +9,7 @@
                justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .card { background: white; border-radius: 12px; padding: 32px; max-width: 400px;
                 width: 100%; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
-        h1 { font-size: 22px; margin-bottom: 4px; }
-        .serial { color: #888; font-size: 13px; margin-bottom: 24px; }
+        h1 { font-size: 22px; margin-bottom: 24px; }
         label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; margin-top: 16px; }
         input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
                 font-size: 16px; outline: none; }
@@ -37,7 +36,6 @@
 <body>
     <div class="card">
         <h1>SmartHub WiFi Setup</h1>
-        <p class="serial">Serial: {{ serial }}</p>
         <form method="POST" action="/setup" id="setupForm">
             <input type="hidden" id="ssid" name="ssid" value="">
             <div id="stepChoose">
@@ -102,7 +100,7 @@
                             var btn = document.createElement('button');
                             btn.type = 'button';
                             btn.className = 'scan-item';
-                            btn.innerHTML = '<strong>' + escapeHtml(n.ssid) + '</strong><span>Signal: ' + (n.signal || '') + ' dBm</span>';
+                            btn.innerHTML = '<strong>' + escapeHtml(n.ssid) + '</strong>';
                             btn.addEventListener('click', function() {
                                 selectNetwork(n.ssid);
                             });
