@@ -55,7 +55,8 @@ If WiFi connection fails, the AP restarts and the user sees a retry page.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/` | WiFi setup page (or failure/retry page) |
+| GET | `/` | WiFi setup page (or failure/retry page) — scan list + pick network, then enter password |
+| GET | `/wifi/scan` | JSON list of visible networks (for setup page; may be empty when Pi is in AP mode) |
 | POST | `/setup` | Submit WiFi SSID and password |
 | GET | `/generate_204` | Android captive portal detection → redirects to `/` |
 | GET | `/hotspot-detect.html` | Apple captive portal detection → redirects to `/` |

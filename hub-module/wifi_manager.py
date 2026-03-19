@@ -126,6 +126,50 @@ class WifiManager:
         self.is_ap_active = False
         logger.info("AP stopped.")
 
+    def scan_networks(self) -> list[dict]:
+        """
+        Scan for visible WiFi networks. Returns list of {"ssid": str, "signal": int} sorted by signal (strongest first).
+        May return empty when the interface is in AP mode (single-radio Pi); manual SSID entry still works.
+        """
+        if not self._is_linux:
+            # Stub for macOS dev: return fake networks
+            return [
+                {"ssid": "HomeNetwork", "signal": -45},
+                {"ssid": "Neighbor_5G", "signal": -72},
+            ]
+        try:
+            result = subprocess.run(
+                ["iw", "dev", AP_INTERFACE, "scan"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                logger.debug("iw scan failed (e.g. interface in AP mode): %s", result.stderr or result.stdout)
+                return []
+            # Parse BSS blocks: signal (dBm) and SSID; dedupe by SSID keeping strongest signal
+            by_ssid: dict[str, int] = {}
+            current_signal: int | None = None
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("signal:"):
+                    try:
+                        current_signal = int(float(line.replace("signal:", "").replace("dBm", "").strip()))
+                    except (ValueError, TypeError):
+                        current_signal = None
+                elif line.startswith("SSID:"):
+                    ssid = line[5:].strip()
+                    if ssid and current_signal is not None:
+                        if ssid not in by_ssid or by_ssid[ssid] < current_signal:
+                            by_ssid[ssid] = current_signal
+                    current_signal = None
+            out = [{"ssid": s, "signal": sig} for s, sig in by_ssid.items()]
+            out.sort(key=lambda x: -x["signal"])
+            return out
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            logger.debug("WiFi scan error: %s", e)
+            return []
+
     def connect_to_wifi(self, ssid: str, password: str) -> bool:
         """Connect the hub to the user's home WiFi network. Returns True on success."""
         logger.info(f"Connecting to WiFi network: {ssid}")

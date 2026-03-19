@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from flask import Blueprint, request, redirect, render_template
+from flask import Blueprint, request, redirect, render_template, jsonify
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,13 @@ def init_captive_portal(hub_serial, hub_state, wifi, poller, on_connected, on_fa
     _poller = poller
     _on_wifi_connected = on_connected
     _on_wifi_failed = on_failed
+
+
+@captive_portal_bp.route("/wifi/scan", methods=["GET"])
+def wifi_scan():
+    """Return list of visible WiFi networks for the setup page (scan-and-select)."""
+    networks = _wifi.scan_networks()
+    return jsonify({"networks": networks})
 
 
 @captive_portal_bp.route("/", methods=["GET"])
