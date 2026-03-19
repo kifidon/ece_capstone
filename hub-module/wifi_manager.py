@@ -204,18 +204,28 @@ class WifiManager:
         )
         time.sleep(2)
 
-        def do_connect():
-            # Explicit key-mgmt avoids "802-11-wireless-security.key-mgmt: property is missing"
-            return subprocess.run(
-                [
-                    "sudo", "nmcli", "device", "wifi", "connect", ssid,
-                    "password", password, "ifname", AP_INTERFACE,
-                    "--", "wifi-sec.key-mgmt", "wpa-psk",
-                ],
+        # Add connection with explicit key-mgmt (avoids "key-mgmt: property is missing");
+        # "device wifi connect" with -- is not supported on all nmcli versions.
+        subprocess.run(
+            ["sudo", "nmcli", "connection", "delete", ssid],
+            check=False, capture_output=True, text=True,
+        )
+        add_result = subprocess.run(
+            [
+                "sudo", "nmcli", "connection", "add", "type", "wifi", "con-name", ssid,
+                "ifname", AP_INTERFACE, "ssid", ssid,
+                "wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password,
+            ],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        if add_result.returncode != 0:
+            logger.error("Failed to add connection: %s", add_result.stderr or add_result.stdout or "")
+            result = add_result
+        else:
+            result = subprocess.run(
+                ["sudo", "nmcli", "connection", "up", ssid, "ifname", AP_INTERFACE],
                 check=False, capture_output=True, text=True, timeout=30,
             )
-
-        result = do_connect()
         if result.returncode != 0 and "No network with SSID" in (result.stderr or result.stdout or ""):
             logger.info("SSID not in scan yet, rescanning and retrying once...")
             subprocess.run(
@@ -223,7 +233,10 @@ class WifiManager:
                 check=False, capture_output=True, text=True, timeout=15,
             )
             time.sleep(2)
-            result = do_connect()
+            result = subprocess.run(
+                ["sudo", "nmcli", "connection", "up", ssid, "ifname", AP_INTERFACE],
+                check=False, capture_output=True, text=True, timeout=30,
+            )
 
         if result.returncode == 0:
             logger.info(f"Connected to {ssid}")
