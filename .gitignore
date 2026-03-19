@@ -2,6 +2,12 @@
 .venv/
 venv/
 env/
+.envrc
+.env
+.env.*
+*/.env
+*/.env.*
+
 
 # Python
 __pycache__/
@@ -19,6 +25,7 @@ build/
 *.swp
 *.swo
 
-.env*
+# .env*
 *.log
 smarthub.log
+backend/backend.log
