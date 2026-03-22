@@ -217,3 +217,36 @@ Generate a Fernet key:
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
+
+## Deploy to Render (one instance: Django + Celery worker + beat)
+
+One **Web Service** runs **Gunicorn**, **Celery worker**, and **Celery beat** together via [Honcho](https://github.com/nickstenning/honcho) and `Procfile`.
+
+1. **Repo root** includes `render.yaml` (Blueprint). In the Render dashboard: **New → Blueprint** → connect the repo, or create a **Web Service** manually:
+   - **Runtime:** Docker  
+   - **Dockerfile path:** `backend/Dockerfile`  
+   - **Docker context:** `backend`
+
+2. **Environment variables** (dashboard):
+   | Variable | Notes |
+   |----------|--------|
+   | `SECRET_KEY` | Django secret (generate a long random string) |
+   | `DEBUG` | `False` |
+   | `ALLOWED_HOSTS` | Your service hostname, e.g. `your-app.onrender.com` (comma-separated if several) |
+   | `DATABASE_URL` | Your existing Postgres URL (e.g. Supabase); same as `DB_CONNECTION_STRING` if you prefer that name |
+   | `REDIS_URL` | Render Redis, Upstash, or Redis Cloud (Celery broker + result backend) |
+   | `FIELD_ENCRYPTION_KEY` | Same Fernet key as hub firmware |
+
+3. **Health check:** use path `/admin/login/` (or add a simple `/health/` view later).
+
+4. **Local Docker test:**
+   ```bash
+   cd backend
+   docker build -t ece-backend .
+   docker run --rm -p 8000:8000 -e PORT=8000 \
+     -e DATABASE_URL=... -e REDIS_URL=... -e SECRET_KEY=dev -e ALLOWED_HOSTS='*' \
+     -e FIELD_ENCRYPTION_KEY=... \
+     ece-backend
+   ```
+
+**Note:** TensorFlow in the image makes builds slow and the image large. If the API does not need TF at runtime, trim `requirements.txt` for production to speed deploys.
