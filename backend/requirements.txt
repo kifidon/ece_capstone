@@ -27,6 +27,9 @@ redis>=5.0.0
 cryptography>=41.0.0
 PyYAML>=6.0
 requests>=2.28.0
+openai>=1.0.0
+pydantic>=2.0.0
+google-genai
 gunicorn>=22.0.0
 whitenoise>=6.6.0
 honcho>=1.1.0
