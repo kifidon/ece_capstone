@@ -19,7 +19,7 @@ def require_hub_api_key(serial_field="hub_serial"):
             if not hub_serial:
                 return JsonResponse({"error": f"{serial_field} is required"}, status=400)
 
-            hub = get_object_or_404(EdgeDevice, serial_number=hub_serial, type="smart_hub")
+            hub = get_object_or_404(EdgeDevice, serial_number=hub_serial, device_type="smart_hub")
 
             api_key = request.headers.get("X-API-Key")
             if not api_key or api_key != hub.api_key:

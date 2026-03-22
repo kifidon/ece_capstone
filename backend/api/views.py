@@ -17,8 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 class EdgeEventView(ModelViewSet):
-    queryset = EdgeEvent.objects.filter(is_deleted=False).order_by('-timestamp')
     serializer_class = EdgeEventSerializer
+
+    def get_permissions(self):
+        # Hub POSTs events without JWT; browser app uses JWT for list/detail/update/delete
+        if self.action == 'create':
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        qs = EdgeEvent.objects.filter(is_deleted=False).order_by('-timestamp')
+        if self.request.user.is_authenticated:
+            qs = qs.filter(hub_device__user=self.request.user)
+        return qs
 
     def perform_create(self, serializer):
         event = serializer.save()
@@ -31,8 +42,11 @@ class EdgeEventView(ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class EdgeDeviceView(ModelViewSet):
-    queryset = EdgeDevice.objects.all()
     serializer_class = EdgeDeviceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return EdgeDevice.objects.filter(user=self.request.user)
 
 
 @api_view(["POST"])
@@ -97,7 +111,7 @@ def device_claim(request):
     device.user = request.user
     device.save(update_fields=["user"])
 
-    if device.type == "smart_hub":
+    if device.device_type == "smart_hub":
         device.devices.update(user=request.user)
 
         push_config_to_hub.delay(str(device.id))
@@ -130,19 +144,52 @@ def register_discovered_devices(request, hub):
             {"serial_number": "...", "device_type": "smart_plug"},
         ]
     }
+    Each device must include serial_number and device_type (pir_sensor or smart_plug). Missing or invalid values return 400.
     """
     devices = request.data.get("devices", [])
+    if not isinstance(devices, list):
+        return JsonResponse({"error": "devices must be a JSON array"}, status=400)
+
+    allowed = EdgeDevice.HUB_SYNC_DEVICE_TYPES
+    device_errors = []
+    for i, dev_data in enumerate(devices):
+        if not isinstance(dev_data, dict):
+            device_errors.append({"index": i, "detail": "each entry must be an object"})
+            continue
+        serial = dev_data.get("serial_number")
+        dtype = dev_data.get("device_type")
+        row_msgs = []
+        if not serial or not str(serial).strip():
+            row_msgs.append("serial_number is required")
+        if dtype is None or (isinstance(dtype, str) and not dtype.strip()):
+            row_msgs.append("device_type is required")
+        elif dtype not in allowed:
+            row_msgs.append(
+                f"device_type must be one of: {sorted(allowed)} (got {dtype!r})"
+            )
+        if row_msgs:
+            device_errors.append({"index": i, "detail": "; ".join(row_msgs)})
+
+    if device_errors:
+        return JsonResponse(
+            {
+                "error": "invalid devices payload",
+                "device_errors": device_errors,
+            },
+            status=400,
+        )
 
     created = updated = 0
     for dev_data in devices:
-        serial = dev_data.get("serial_number")
-        if not serial:
-            continue
+        serial = str(dev_data["serial_number"]).strip()
+        dtype = dev_data["device_type"]
+        if isinstance(dtype, str):
+            dtype = dtype.strip()
 
         device, was_created = EdgeDevice.objects.update_or_create(
             serial_number=serial,
             defaults={
-                "device_type": dev_data.get("device_type", "pir_sensor"),
+                "device_type": dtype,
                 "hub_device": hub,
                 "user": hub.user,
                 "battery_level": dev_data.get("battery_level"),
@@ -166,7 +213,7 @@ def hub_config(request, serial_number):
     Fallback endpoint for hub to fetch its config.
     Primary flow is push-based via push_config_to_hub.
     """
-    hub = get_object_or_404(EdgeDevice, serial_number=serial_number, type="smart_hub")
+    hub = get_object_or_404(EdgeDevice, serial_number=serial_number, device_type="smart_hub")
 
     if not hub.user:
         return JsonResponse({"error": "Hub not claimed by any user"}, status=404)

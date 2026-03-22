@@ -49,7 +49,7 @@ Represents any device in the system — hubs, PIR sensors, or smart plugs.
 | Field | Type | Description |
 |---|---|---|
 | `id` | UUIDField | Primary key |
-| `type` | CharField | `smart_hub`, `pir_sensor`, or `smart_plug` |
+| `device_type` | CharField | `smart_hub`, `pir_sensor`, or `smart_plug` |
 | `hub_device` | ForeignKey (self) | Parent hub this device belongs to |
 | `user` | ForeignKey (CustomUser) | Owner (set when user claims the hub) |
 | `serial_number` | CharField | Unique hardware identifier |
@@ -250,3 +250,5 @@ One **Web Service** runs **Gunicorn**, **Celery worker**, and **Celery beat** to
    ```
 
 **Note:** TensorFlow in the image makes builds slow and the image large. If the API does not need TF at runtime, trim `requirements.txt` for production to speed deploys.
+
+**Out of memory on Render (free ~512MB):** The stack runs Gunicorn + Celery worker + beat in one container. TensorFlow is **lazy-loaded** only inside the Celery worker when `process_event` runs (not in web workers). `Procfile` uses **Gunicorn `--workers 1`** and **`celery worker --concurrency=1`** to avoid multiple TF copies. The Dockerfile sets `OMP_NUM_THREADS=1` / `MKL_NUM_THREADS=1` to cap thread overhead. If you still OOM, upgrade the Render plan RAM or split the **Celery worker** into a second service (its own 512MB) and run only `web` + `beat` on the web service (advanced).

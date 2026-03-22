@@ -1,4 +1,6 @@
-# Single-instance: Gunicorn (web) + Celery worker + Celery beat (honcho runs all three)
-web: gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 2 --timeout 120 --access-logfile - --error-logfile -
-worker: celery -A config worker -l INFO
+# Single-instance: tuned for low RAM
+# --workers 1: avoid duplicate Django+deps per process; web no longer loads TF (lazy in tasks).
+# Celery --concurrency 1: one TF/Keras load only (prefork default would multiply memory).
+web: gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile -
+worker: celery -A config worker -l INFO --concurrency=1
 beat: celery -A config beat -l INFO

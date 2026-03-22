@@ -1,5 +1,7 @@
 import json
 import logging
+import threading
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
 import requests
@@ -8,21 +10,37 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 
 from .models import EdgeEvent, EdgeDevice
-from .ml.ml import MLProcessor
 from dashboard.models import CustomUser
+
+if TYPE_CHECKING:
+    from .ml.ml import MLProcessor
 
 logger = logging.getLogger(__name__)
 
-ml_model = MLProcessor("minimal")
+# Load TensorFlow/Keras only when running inference (Celery worker), not when the web
+# process imports this module for .delay() — critical for low-memory hosts (e.g. Render 512MB).
+_ml_model_lock = threading.Lock()
+_ml_model: Optional[Any] = None
+
+
+def get_ml_model():
+    """Singleton MLProcessor; imported lazily to avoid TF in Gunicorn workers."""
+    global _ml_model
+    with _ml_model_lock:
+        if _ml_model is None:
+            from .ml.ml import MLProcessor
+
+            _ml_model = MLProcessor("minimal")
+        return _ml_model
 
 
 class EdgeEventProcessor():
 
     def __init__(self, *args, **kwargs):
-        self._pose_estimator = ml_model
-        self._keypoints = None | np.ndarray
-        self._predictions = None | np.ndarray
-        self._inference_result = None | str
+        self._pose_estimator = None  # resolved in run_inference via lazy loader
+        self._keypoints: Optional[np.ndarray] = None
+        self._predictions: Optional[np.ndarray] = None
+        self._inference_result: Optional[str] = None
 
     def _normalize_keypoints(self, keypoints: dict) -> np.ndarray:
         """
@@ -84,6 +102,7 @@ class EdgeEventProcessor():
         Run model inference on keypoints, then rule-based classification.
         Returns a dict with the fields to update on the event.
         """
+        self._pose_estimator = get_ml_model()
         keypoints = data.get("keypoints", {})
         keypoints = self._normalize_keypoints(keypoints)
         preds = self._pose_estimator.predict(keypoints)

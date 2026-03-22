@@ -52,7 +52,7 @@ class ProcessEventTestCase(TestCase):
             password="testpass123",
         )
         self.hub = EdgeDevice.objects.create(
-            type="smart_hub",
+            device_type="smart_hub",
             serial_number="HUB-001",
             user=self.user,
         )

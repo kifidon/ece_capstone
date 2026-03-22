@@ -1,5 +1,6 @@
 # Render Blueprint: one Web Service running Django + Celery worker + Celery beat (see backend/docker-entrypoint.sh + Procfile)
 # Link your own Redis (Render Redis or external) — set REDIS_URL in the dashboard.
+# Free tier ~512MB: TF loads only in Celery (lazy); gunicorn workers=1; celery concurrency=1 (see Procfile + Dockerfile ENV).
 
 services:
   - type: web
