@@ -1,0 +1,24 @@
+# Render Blueprint: one Web Service running Django + Celery worker + Celery beat (see backend/docker-entrypoint.sh + Procfile)
+# Link your own Redis (Render Redis or external) — set REDIS_URL in the dashboard.
+
+services:
+  - type: web
+    name: ece-capstone-backend
+    runtime: docker 
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /admin/login/
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        sync: false  # set to your Render hostname, e.g. ece-capstone-backend.onrender.com
+      - key: DATABASE_URL
+        sync: false  # paste your existing Postgres URL (e.g. Supabase pooler string)
+      - key: REDIS_URL
+        sync: false  # Render Redis internal URL or Upstash, e.g. redis://...
+      - key: FIELD_ENCRYPTION_KEY
+        sync: false  # Fernet key, must match hub firmware
