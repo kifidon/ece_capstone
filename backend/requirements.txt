@@ -21,6 +21,7 @@ matplotlib>=3.8.0       # plotting training history
 pytest>=7.0.0           # tests
 djangorestframework>=3.14.0
 djangorestframework-simplejwt>=5.3.0
+django-cors-headers>=4.3.0
 celery[redis]>=5.3.0
 redis>=5.0.0
 cryptography>=41.0.0

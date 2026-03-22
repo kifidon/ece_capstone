@@ -29,11 +29,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -112,6 +114,13 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
 }
+
+# Browser frontend is on a different origin — CORS required for fetch().
+# Allow any Origin for now; tighten later with CORS_ALLOW_ALL_ORIGINS=False + CORS_ALLOWED_ORIGINS.
+CORS_ALLOW_ALL_ORIGINS = True
+
+# JWT uses Authorization header, not cookies — keep False (wildcard + credentials is invalid in browsers).
+CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'False').lower() in ('1', 'true', 'yes')
 
 
 SIMPLE_JWT = {

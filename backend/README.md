@@ -236,6 +236,7 @@ One **Web Service** runs **Gunicorn**, **Celery worker**, and **Celery beat** to
    | `DATABASE_URL` | Your existing Postgres URL (e.g. Supabase); same as `DB_CONNECTION_STRING` if you prefer that name |
    | `REDIS_URL` | Render Redis, Upstash, or Redis Cloud (Celery broker + result backend) |
    | `FIELD_ENCRYPTION_KEY` | Same Fernet key as hub firmware |
+   | `CORS_ALLOW_ALL_ORIGINS` | Currently **all origins allowed** in `settings.py` for convenience. Lock down before production (set `False` and configure `CORS_ALLOWED_ORIGINS` in code or env). |
 
 3. **Health check:** use path `/admin/login/` (or add a simple `/health/` view later).
 
