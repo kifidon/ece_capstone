@@ -9,8 +9,7 @@
                justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .card { background: white; border-radius: 12px; padding: 32px; max-width: 400px;
                 width: 100%; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
-        h1 { font-size: 22px; margin-bottom: 4px; }
-        .serial { color: #888; font-size: 13px; margin-bottom: 24px; }
+        h1 { font-size: 22px; margin-bottom: 24px; }
         label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; margin-top: 16px; }
         input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
                 font-size: 16px; outline: none; }
@@ -19,22 +18,163 @@
                  border-radius: 8px; font-size: 16px; font-weight: 600; margin-top: 24px; cursor: pointer; }
         button:active { background: #3a7bc8; }
         .status { text-align: center; margin-top: 16px; font-size: 14px; color: #888; }
+        .scan-list { margin-top: 12px; max-height: 220px; overflow-y: auto; }
+        .scan-item { display: block; width: 100%; padding: 12px 14px; margin-bottom: 6px;
+                    text-align: left; font-size: 15px; background: #f8f9fa; border: 1px solid #eee;
+                    border-radius: 8px; cursor: pointer; color: #111; }
+        .scan-item:hover { background: #e9ecef; border-color: #dee2e6; }
+        .scan-item strong { display: block; color: #111; }
+        .scan-item span { font-size: 12px; color: #555; }
+        .scan-item.other { background: #fff; border-style: dashed; color: #111; }
+        .hidden { display: none; }
+        .chosen { margin-top: 16px; padding: 10px 12px; background: #e7f1ff; border-radius: 8px; font-size: 14px; color: #111; }
+        .chosen strong { color: #1a5fb4; }
+        .rescan { font-size: 13px; color: #4A90D9; background: none; border: none; padding: 8px 0; margin-top: 8px; cursor: pointer; width: auto; }
+        .rescan:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>SmartHub WiFi Setup</h1>
-        <p class="serial">Serial: {{ serial }}</p>
-        <form method="POST" action="/setup">
-            <label for="ssid">WiFi Network Name</label>
-            <input type="text" id="ssid" name="ssid" required placeholder="Your WiFi SSID">
-            <label for="password">WiFi Password</label>
-            <input type="password" id="password" name="password" required placeholder="Your WiFi password">
-            <button type="submit">Connect</button>
+        <form method="POST" action="/setup" id="setupForm">
+            <input type="hidden" id="ssid" name="ssid" value="">
+            <div id="stepChoose">
+                <label>Select your network</label>
+                <div class="scan-list" id="scanList">
+                    <p class="status" id="scanStatus">Scanning…</p>
+                </div>
+                <button type="button" class="rescan" id="rescanBtn" style="display:none">Rescan</button>
+            </div>
+            <div id="stepPassword" class="hidden">
+                <div class="chosen">Network: <strong id="chosenSsid"></strong></div>
+                <label for="password">WiFi Password</label>
+                <input type="password" id="password" name="password" required placeholder="Your WiFi password">
+                <button type="button" class="rescan" id="backBtn">Choose another network</button>
+                <button type="submit">Connect</button>
+            </div>
+            <div id="stepOther" class="hidden">
+                <label for="ssidOther">WiFi Network Name</label>
+                <input type="text" id="ssidOther" placeholder="Enter SSID manually">
+                <label for="passwordOther">WiFi Password</label>
+                <input type="password" id="passwordOther" placeholder="Your WiFi password">
+                <button type="button" class="rescan" id="backFromOther">Back to list</button>
+                <button type="button" id="connectOther">Connect</button>
+            </div>
         </form>
         {% if status_msg %}
         <p class="status">{{ status_msg }}</p>
         {% endif %}
     </div>
+    <script>
+        (function() {
+            var scanList = document.getElementById('scanList');
+            var scanStatus = document.getElementById('scanStatus');
+            var rescanBtn = document.getElementById('rescanBtn');
+            var stepChoose = document.getElementById('stepChoose');
+            var stepPassword = document.getElementById('stepPassword');
+            var stepOther = document.getElementById('stepOther');
+            var ssidInput = document.getElementById('ssid');
+            var chosenSsid = document.getElementById('chosenSsid');
+            var passwordInput = document.getElementById('password');
+            var backBtn = document.getElementById('backBtn');
+            var ssidOther = document.getElementById('ssidOther');
+            var passwordOther = document.getElementById('passwordOther');
+            var backFromOther = document.getElementById('backFromOther');
+            var connectOther = document.getElementById('connectOther');
+            var setupForm = document.getElementById('setupForm');
+
+            function loadNetworks() {
+                scanStatus.textContent = 'Scanning…';
+                scanStatus.classList.remove('hidden');
+                scanList.querySelectorAll('.scan-item').forEach(function(n) { n.remove(); });
+                fetch('/wifi/scan')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        scanStatus.classList.add('hidden');
+                        var nets = data.networks || [];
+                        if (nets.length === 0) {
+                            scanStatus.textContent = 'No networks found. Use "Other network" below to type the name.';
+                            scanStatus.classList.remove('hidden');
+                        }
+                        nets.forEach(function(n) {
+                            var btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'scan-item';
+                            btn.innerHTML = '<strong>' + escapeHtml(n.ssid) + '</strong>';
+                            btn.addEventListener('click', function() {
+                                selectNetwork(n.ssid);
+                            });
+                            scanList.appendChild(btn);
+                        });
+                        rescanBtn.style.display = 'inline-block';
+                        appendOtherButton();
+                    })
+                    .catch(function() {
+                        scanStatus.textContent = 'Scan failed. Use "Other network" below to type the name.';
+                        scanStatus.classList.remove('hidden');
+                        rescanBtn.style.display = 'inline-block';
+                        appendOtherButton();
+                    });
+            }
+
+            function appendOtherButton() {
+                if (document.querySelector('.scan-item.other')) return;
+                var other = document.createElement('button');
+                other.type = 'button';
+                other.className = 'scan-item other';
+                other.textContent = 'Other network (type name)';
+                other.addEventListener('click', function() {
+                    stepChoose.classList.add('hidden');
+                    stepOther.classList.remove('hidden');
+                });
+                scanList.appendChild(other);
+            }
+
+            function escapeHtml(s) {
+                var div = document.createElement('div');
+                div.textContent = s;
+                return div.innerHTML;
+            }
+
+            function selectNetwork(ssid) {
+                ssidInput.value = ssid;
+                chosenSsid.textContent = ssid;
+                passwordInput.value = '';
+                stepChoose.classList.add('hidden');
+                stepPassword.classList.remove('hidden');
+                passwordInput.focus();
+            }
+
+            rescanBtn.addEventListener('click', function() {
+                scanList.innerHTML = '';
+                scanList.appendChild(scanStatus);
+                loadNetworks();
+            });
+
+            backBtn.addEventListener('click', function() {
+                stepPassword.classList.add('hidden');
+                stepChoose.classList.remove('hidden');
+                ssidInput.value = '';
+            });
+
+            backFromOther.addEventListener('click', function() {
+                stepOther.classList.add('hidden');
+                stepChoose.classList.remove('hidden');
+                ssidOther.value = '';
+                passwordOther.value = '';
+            });
+
+            connectOther.addEventListener('click', function() {
+                var sid = ssidOther.value.trim();
+                var pwd = passwordOther.value;
+                if (!sid || !pwd) return;
+                ssidInput.value = sid;
+                passwordInput.value = pwd;
+                setupForm.submit();
+            });
+
+            loadNetworks();
+        })();
+    </script>
 </body>
 </html>

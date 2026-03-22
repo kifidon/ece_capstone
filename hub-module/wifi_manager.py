@@ -123,8 +123,56 @@ class WifiManager:
         self._run(["sudo", "killall", "hostapd"], check=False)
         self._run(["sudo", "killall", "dnsmasq"], check=False)
         self._run(["sudo", "ip", "addr", "flush", "dev", AP_INTERFACE], check=False)
+        # Return interface to managed mode so NetworkManager can scan and connect
+        self._run(["sudo", "ip", "link", "set", AP_INTERFACE, "down"], check=False)
+        self._run(["sudo", "iw", "dev", AP_INTERFACE, "set", "type", "managed"], check=False)
+        self._run(["sudo", "ip", "link", "set", AP_INTERFACE, "up"], check=False)
         self.is_ap_active = False
         logger.info("AP stopped.")
+
+    def scan_networks(self) -> list[dict]:
+        """
+        Scan for visible WiFi networks. Returns list of {"ssid": str, "signal": int} sorted by signal (strongest first).
+        May return empty when the interface is in AP mode (single-radio Pi); manual SSID entry still works.
+        """
+        if not self._is_linux:
+            # Stub for macOS dev: return fake networks
+            return [
+                {"ssid": "HomeNetwork", "signal": -45},
+                {"ssid": "Neighbor_5G", "signal": -72},
+            ]
+        try:
+            result = subprocess.run(
+                ["iw", "dev", AP_INTERFACE, "scan"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                logger.debug("iw scan failed (e.g. interface in AP mode): %s", result.stderr or result.stdout)
+                return []
+            # Parse BSS blocks: signal (dBm) and SSID; dedupe by SSID keeping strongest signal
+            by_ssid: dict[str, int] = {}
+            current_signal: int | None = None
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("signal:"):
+                    try:
+                        current_signal = int(float(line.replace("signal:", "").replace("dBm", "").strip()))
+                    except (ValueError, TypeError):
+                        current_signal = None
+                elif line.startswith("SSID:"):
+                    ssid = line[5:].strip()
+                    if ssid and current_signal is not None:
+                        if ssid not in by_ssid or by_ssid[ssid] < current_signal:
+                            by_ssid[ssid] = current_signal
+                    current_signal = None
+            out = [{"ssid": s, "signal": sig} for s, sig in by_ssid.items()]
+            out.sort(key=lambda x: -x["signal"])
+            return out
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            logger.debug("WiFi scan error: %s", e)
+            return []
 
     def connect_to_wifi(self, ssid: str, password: str) -> bool:
         """Connect the hub to the user's home WiFi network. Returns True on success."""
@@ -148,29 +196,65 @@ class WifiManager:
             except Exception as e:
                 logger.warning("Could not make wlan0 managed: %s", e)
 
-        try:
+        # Give NM time to see the interface, then rescan so the target SSID is in the list
+        time.sleep(1)
+        subprocess.run(
+            ["sudo", "nmcli", "device", "wifi", "rescan", "ifname", AP_INTERFACE],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        time.sleep(2)
+
+        # Add connection with explicit key-mgmt (avoids "key-mgmt: property is missing");
+        # "device wifi connect" with -- is not supported on all nmcli versions.
+        subprocess.run(
+            ["sudo", "nmcli", "connection", "delete", ssid],
+            check=False, capture_output=True, text=True,
+        )
+        add_result = subprocess.run(
+            [
+                "sudo", "nmcli", "connection", "add", "type", "wifi", "con-name", ssid,
+                "ifname", AP_INTERFACE, "ssid", ssid,
+                "wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password,
+            ],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        if add_result.returncode != 0:
+            logger.error("Failed to add connection: %s", add_result.stderr or add_result.stdout or "")
+            result = add_result
+        else:
             result = subprocess.run(
-                ["sudo", "nmcli", "device", "wifi", "connect", ssid,
-                 "password", password, "ifname", AP_INTERFACE],
-                check=True, capture_output=True, text=True,
+                ["sudo", "nmcli", "connection", "up", ssid, "ifname", AP_INTERFACE],
+                check=False, capture_output=True, text=True, timeout=30,
             )
+        if result.returncode != 0 and "No network with SSID" in (result.stderr or result.stdout or ""):
+            logger.info("SSID not in scan yet, rescanning and retrying once...")
+            subprocess.run(
+                ["sudo", "nmcli", "device", "wifi", "rescan", "ifname", AP_INTERFACE],
+                check=False, capture_output=True, text=True, timeout=15,
+            )
+            time.sleep(2)
+            result = subprocess.run(
+                ["sudo", "nmcli", "connection", "up", ssid, "ifname", AP_INTERFACE],
+                check=False, capture_output=True, text=True, timeout=30,
+            )
+
+        if result.returncode == 0:
             logger.info(f"Connected to {ssid}")
             return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to connect to {ssid}: %s", e.stderr or e.stdout or e)
-            # Re-create unmanage config so next start_ap() can use wlan0 again
-            if not os.path.isfile(nm_unmanage):
-                try:
-                    os.makedirs(os.path.dirname(nm_unmanage), exist_ok=True)
-                    with open(nm_unmanage, "w") as f:
-                        f.write("[keyfile]\nunmanaged-devices=interface-name:wlan0\n")
-                    subprocess.run(
-                        ["sudo", "systemctl", "reload", "NetworkManager"],
-                        check=False, capture_output=True, text=True,
-                    )
-                except Exception:
-                    pass
-            return False
+        logger.error(f"Failed to connect to {ssid}: %s", result.stderr or result.stdout or "")
+        # Re-create unmanage config so next start_ap() can use wlan0 again
+        if not os.path.isfile(nm_unmanage):
+            try:
+                os.makedirs(os.path.dirname(nm_unmanage), exist_ok=True)
+                with open(nm_unmanage, "w") as f:
+                    f.write("[keyfile]\nunmanaged-devices=interface-name:wlan0\n")
+                subprocess.run(
+                    ["sudo", "systemctl", "reload", "NetworkManager"],
+                    check=False, capture_output=True, text=True,
+                )
+            except Exception:
+                pass
+        return False
 
     def provision_and_switch(self, wifi_ssid: str, wifi_password: str, pir_devices: list, on_connected=None, on_failed=None):
         """
