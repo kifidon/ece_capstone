@@ -15,10 +15,15 @@ services:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        sync: false  # set to your Render hostname, e.g. ece-capstone-backend.onrender.com
+        sync: false
+      # Paste secrets only in Render → Environment (never commit values). Django reads 
       - key: DATABASE_URL
-        sync: false  # paste your existing Postgres URL (e.g. Supabase pooler string)
+        sync: false
       - key: REDIS_URL
-        sync: false  # Render Redis internal URL or Upstash, e.g. redis://...
+        sync: false
       - key: FIELD_ENCRYPTION_KEY
-        sync: false  # Fernet key, must match hub firmware
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
