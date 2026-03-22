@@ -7,7 +7,7 @@ services:
     runtime: docker 
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
+    plan: free
     healthCheckPath: /admin/login/
     envVars:
       - key: SECRET_KEY
