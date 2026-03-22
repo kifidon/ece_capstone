@@ -31,6 +31,13 @@ class EdgeEventSerializer(serializers.ModelSerializer):
             'trigger_device': {'required': False},
         }
 
+    def validate_hub_device(self, value):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            if value.user_id != request.user.id:
+                raise serializers.ValidationError("Hub does not belong to you.")
+        return value
+
     def create(self, validated_data):
         devices = validated_data.pop('devices', None)
         if devices is not None:

@@ -7,13 +7,16 @@ from utils.fields import EncryptedCharField
 
 class EdgeDevice(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    TYPE_CHOICES = [
+    DEVICE_TYPE_CHOICES = [
         ('pir_sensor', 'PIR Sensor'),
         ('smart_plug', 'Smart Plug'),
         ('smart_hub', 'Smart Hub'),
     ]
+    # Peripherals registered via hub POST /api/devices/sync/ must use one of these (hub itself is not synced here).
+    HUB_SYNC_DEVICE_TYPES = frozenset({"pir_sensor", "smart_plug"})
+
     hub_device = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='devices')
-    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='pir_sensor')
+    device_type = models.CharField(max_length=20, choices=DEVICE_TYPE_CHOICES, null=True, blank=True)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='devices', null=True, blank=True)
     battery_level = models.IntegerField(default=100, null=True, blank=True)
     is_active = models.BooleanField(default=True)

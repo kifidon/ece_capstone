@@ -1,8 +1,7 @@
 import re
-from django.shortcuts import render
+from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import JsonResponse
 from rest_framework import status
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -32,7 +31,7 @@ def register(request):
             'error': 'Email already exists.'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    user = CustomUser.objects.create_user(ursername=username, email=email, password=password)    
+    user = CustomUser.objects.create_user(username=username, email=email, password=password)    
     user.save()
     return JsonResponse({
         'message': 'User created successfully.'
@@ -75,7 +74,10 @@ def update_user_profile(request):
     data = request.data
     user = request.user
     for key, value in data.items():
-        if key not in ['address', 'phone_number', 'first_name', 'last_name']:
+        if key not in [
+            'address', 'phone_number', 'first_name', 'last_name',
+            'kasa_username', 'kasa_password',
+        ]:
             logger.error(f"User tried to update invalid field: {key}")
             return JsonResponse({
                 'error': f'Invalid field: {key}'
