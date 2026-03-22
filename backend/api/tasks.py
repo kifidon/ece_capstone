@@ -183,7 +183,7 @@ class EdgeEventProcessor():
         """
         Call the AI API for all of a users is_processed=False events and determin which one are anomolus based on their historic data. Update the is_processed field and set is_alert for the ones the agent flags.
 
-        This is a scheduled celery tasks that runs in the background every 2 hours
+        This is a scheduled celery tasks that runs in the background every hour
         """
         users = CustomUser.objects.all()
         for user in users:
@@ -298,3 +298,16 @@ def process_event(event_id: str) -> None:
     event.keypoints = results["keypoints"]
     event.is_keypoints_normalized = True
     event.save(update_fields=["inference_result", "pose_classification", "action", "keypoints", "is_keypoints_normalized"])
+
+
+@shared_task
+def run_post_process_events() -> None:
+    """
+    Periodic job: Gemini anomaly pass over unprocessed events (sets is_processed / is_alert).
+    Registered in CELERY_BEAT_SCHEDULE — runs once per hour.
+    """
+    try:
+        EdgeEventProcessor().post_process_event()
+    except Exception:
+        logger.exception("run_post_process_events failed")
+        raise

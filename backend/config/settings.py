@@ -5,7 +5,9 @@ Django settings for config project.
 import os
 from pathlib import Path
 from datetime import timedelta
+
 import dj_database_url
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -131,7 +133,6 @@ SIMPLE_JWT = {
 # Field-level encryption for secrets stored in the DB (Kasa passwords, WiFi passwords, API keys)
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY')
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
 # Celery + Redis
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_BROKER_URL = REDIS_URL
@@ -140,3 +141,11 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+
+# Celery Beat — anomaly / is_processed pass (api.tasks.run_post_process_events)
+CELERY_BEAT_SCHEDULE = {
+    "post-process-events-hourly": {
+        "task": "api.tasks.run_post_process_events",
+        "schedule": crontab(minute=0),  # top of every hour (server TZ / CELERY_TIMEZONE)
+    },
+}

@@ -235,6 +235,12 @@ One **Web Service** runs **Gunicorn**, **Celery worker**, and **Celery beat** to
    | `ALLOWED_HOSTS` | Your service hostname, e.g. `your-app.onrender.com` (comma-separated if several) |
    | `DATABASE_URL` | Your existing Postgres URL (e.g. Supabase); same as `DB_CONNECTION_STRING` if you prefer that name |
    | `REDIS_URL` | Render Redis, Upstash, or Redis Cloud (Celery broker + result backend) |
+| `GEMINI_API_KEY` | Used by hourly `run_post_process_events` (Gemini anomaly detection) |
+| _(temp)_ | `POST /api/tasks/run-post-process/` is a **public** test hook to queue Gemini post-processing; **remove before production**. |
+
+```bash
+curl -sS -X POST "http://127.0.0.1:8000/api/tasks/run-post-process/"
+```
    | `FIELD_ENCRYPTION_KEY` | Same Fernet key as hub firmware |
    | `CORS_ALLOW_ALL_ORIGINS` | Currently **all origins allowed** in `settings.py` for convenience. Lock down before production (set `False` and configure `CORS_ALLOWED_ORIGINS` in code or env). |
 

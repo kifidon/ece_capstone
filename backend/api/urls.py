@@ -1,6 +1,14 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import EdgeEventView, EdgeDeviceView, device_register, device_claim, register_discovered_devices, hub_config
+from .views import (
+    EdgeEventView,
+    EdgeDeviceView,
+    device_register,
+    device_claim,
+    register_discovered_devices,
+    hub_config,
+    trigger_post_process,
+)
 
 router = DefaultRouter()
 router.register(r'events', EdgeEventView, basename='edge-event')
@@ -12,4 +20,5 @@ urlpatterns = [
     path('devices/claim/', device_claim, name='device-claim'),
     path('devices/sync/', register_discovered_devices, name='device-sync'),
     path('devices/<str:serial_number>/config/', hub_config, name='hub-config'),
+    path('tasks/run-post-process/', trigger_post_process, name='trigger-post-process'),
 ]

@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404
 
 from .models import EdgeEvent, EdgeDevice
 from .serializers import EdgeEventSerializer, EdgeDeviceSerializer
-from .tasks import process_event, push_config_to_hub
+from .tasks import process_event, push_config_to_hub, run_post_process_events
 from .decorators import require_hub_api_key
 
 logger = logging.getLogger(__name__)
@@ -224,3 +224,17 @@ def hub_config(request, serial_number):
         "kasa_username": hub.user.kasa_username,
         "kasa_password": hub.user.kasa_password,
     })
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def trigger_post_process(request):
+    """
+    TEMP: public test hook — enqueues ``run_post_process_events``. Remove before production.
+    """
+    run_post_process_events.delay()
+    logger.info("run_post_process_events queued via trigger_post_process (public test endpoint)")
+    return Response(
+        {"status": "queued", "task": "api.tasks.run_post_process_events"},
+        status=status.HTTP_202_ACCEPTED,
+    )
