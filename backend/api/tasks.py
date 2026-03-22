@@ -6,15 +6,28 @@ import requests
 from celery import shared_task
 from cryptography.fernet import Fernet
 from django.conf import settings
-
+from google import genai
 from .models import EdgeEvent, EdgeDevice
 from .ml.ml import MLProcessor
 from dashboard.models import CustomUser
+from pydantic import BaseModel, Field
+from django.utils import timezone
+from config.settings import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
 ml_model = MLProcessor("minimal")
 
+
+class AnomalyResult(BaseModel):
+    event_id: str = Field(description="The event ID that is an anomaly")
+    alert_reasoning: str = Field(description="Reasoning for why it is anomalous. Keep under 100 words.")
+
+
+class AnomalyDetectionResponse(BaseModel):
+    # Only include events you decide are anomalous.
+    # If there are no anomalies, results should be an empty list.
+    results: list[AnomalyResult] = Field(default_factory=list, description="List of anomalous events.")
 
 class EdgeEventProcessor():
 
@@ -98,32 +111,100 @@ class EdgeEventProcessor():
             "action": action,
             "keypoints": keypoints.tolist(),
         }
+        
+    def _detect_anomalies(self, data: list[dict], new_events: list[dict]) -> dict:
+        """
+        Detect anomalies in the data using the AI API.
+        """
+        client = genai.Client()
+        
+        def to_jsonable(x):
+            # Datetime -> ISO string
+            if hasattr(x, "isoformat"):
+                return x.isoformat()
+            # UUID -> string
+            try:
+                import uuid
+                if isinstance(x, uuid.UUID):
+                    return str(x)
+            except Exception:
+                pass
+            return x
 
+        safe_historic = [{k: to_jsonable(v) for k, v in row.items()} for row in (data or [])]
+        safe_new_events = [{k: to_jsonable(v) for k, v in row.items()} for row in (new_events or [])]
+        
+        prompt = (
+            "You are an anomaly detection model. "
+            "You are given a list of historical baseline events for a user and one or more new events. "
+            "Determine whether each new event is anomalous compared to the baseline. "
+            "An anomalous event deviates significantly in timing, duration, or frequency from the historic trend.\n\n"
+            "Return ONLY JSON that matches the schema.\n"
+            "IMPORTANT: Only include events you are marking as anomalies in the results array.\n\n"
+            f"Historic events (JSON): {json.dumps(safe_historic, ensure_ascii=False)}\n\n"
+            f"New events (JSON): {json.dumps(safe_new_events, ensure_ascii=False)}"
+        )
 
-    def post_process_event(data: dict, user: CustomUser):
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": AnomalyDetectionResponse.model_json_schema(),
+                # Reduce randomness for more deterministic structured output.
+                "temperature": 0,
+            },
+        )
+        parsed = AnomalyDetectionResponse.model_validate_json(response.text)
+        print(f"\n\n\n\nAnomaly detection parsed: {parsed.model_dump()}")
+        return parsed.model_dump()
+    
+
+    def post_process_event(self):
         """
         Call the AI API for all of a users is_processed=False events and determin which one are anomolus based on their historic data. Update the is_processed field and set is_alert for the ones the agent flags.
 
         This is a scheduled celery tasks that runs in the background every 2 hours
         """
+        users = CustomUser.objects.all()
+        for user in users:
+            historic_events = list(
+                EdgeEvent.objects.filter(
+                    hub_device__user=user,
+                    hub_device__is_active=True,
+                    is_processed=True,
+                    timestamp__gte=timezone.now() - timezone.timedelta(days=7),
+                ).values("id", "timestamp", "action", "pose_classification")
+            )
+            events_to_process = list(
+                EdgeEvent.objects.filter(
+                    hub_device__user=user,
+                    hub_device__is_active=True,
+                    is_processed=False,
+                ).values("id", "timestamp", "action", "pose_classification")
+            )
+        
+            anomalies = self._detect_anomalies(historic_events, events_to_process)
+            event_ids = [event["id"] for event in events_to_process]
+            if not event_ids:
+                continue
 
-        historic_events = EdgeEvent.objects.filter(
-            device__user=user,
-            device__is_active=True,
-            is_processed=True,
-            timestamp__gt= None, #TODO:  In the last 7 days
-        )
+            EdgeEvent.objects.filter(id__in=event_ids).update(
+                is_processed=True,
+            )
 
-        payload = EdgeEvent.objects.filter(
-            device__user=user,
-            device__is_active=True,
-            is_processed=False,
-        )
-
-        # Serialize and call modal with Structured output, List of event IDS that are alerts
-
-        pass
-
+            updates = []
+            for anomaly in anomalies.get("results", []):
+                updates.append(
+                    EdgeEvent(
+                        id=anomaly["event_id"],
+                        is_alert=True,
+                        alert_reasoning=anomaly["alert_reasoning"]
+                    )
+                )
+            if updates:
+                EdgeEvent.objects.bulk_update(updates, ["is_alert", "alert_reasoning"])
+                logger.info(f"Updated {len(updates)} events for user {user.id}")
 
 HUB_PORT = 5050
 

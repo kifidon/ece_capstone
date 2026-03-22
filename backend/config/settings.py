@@ -109,6 +109,7 @@ SIMPLE_JWT = {
 
 # Field-level encryption for secrets stored in the DB (Kasa passwords, WiFi passwords, API keys)
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY')
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Celery + Redis
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

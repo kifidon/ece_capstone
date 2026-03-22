@@ -51,7 +51,7 @@ class EdgeEvent(models.Model):
     action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='unknown', null=True, blank=True)
     device_state = models.JSONField(default=dict)
     keypoints = models.JSONField(default=dict)
-    hub_device = models.ForeignKey(EdgeDevice, on_delete=models.CASCADE)
+    hub_device = models.ForeignKey(EdgeDevice, on_delete=models.CASCADE, related_name='events')
     # Device that triggered the event (e.g. PIR that fired). Same shape as device_state items: device_type, serial_number, ...
     trigger_device = models.JSONField(null=True, blank=True)
     
@@ -69,6 +69,7 @@ class EdgeEvent(models.Model):
     is_keypoints_normalized = models.BooleanField(default=False)
     is_processed = models.BooleanField(default=False) # AI background process to figure out alerts
     is_alert = models.BooleanField(default=False)
+    alert_reasoning = models.TextField(null=True, blank=True)
     is_resolved = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     
