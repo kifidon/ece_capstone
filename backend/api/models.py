@@ -12,7 +12,7 @@ class EdgeDevice(models.Model):
         ('smart_plug', 'Smart Plug'),
         ('smart_hub', 'Smart Hub'),
     ]
-    # Peripherals registered via hub POST /api/devices/sync/ must use one of these (hub itself is not synced here).
+    # Peripherals registered via hub POST /api/hub/sync/ must use one of these (hub itself is not synced here).
     HUB_SYNC_DEVICE_TYPES = frozenset({"pir_sensor", "smart_plug"})
 
     hub_device = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='devices')

@@ -84,10 +84,10 @@ A single observation from the hub, containing pose keypoints and device states.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/api/devices/register/` | None | Hub checks in with serial number; backend stores IP |
-| POST | `/api/devices/claim/` | JWT | User claims a device by serial number |
-| POST | `/api/devices/sync/` | X-API-Key (hub) | Hub registers discovered PIR/Kasa devices |
-| GET | `/api/devices/<serial>/config/` | None | Fallback: hub pulls its config |
+| POST | `/api/hub/register/` | None | Hub checks in with serial number; backend stores IP |
+| POST | `/api/hub/claim/` | JWT | User claims a device by serial number |
+| POST | `/api/hub/sync/` | X-API-Key (hub) | Hub registers discovered PIR/Kasa devices |
+| GET | `/api/hub/<serial>/config/` | None | Fallback: hub pulls its config |
 
 ### CRUD (via DRF ViewSets)
 
@@ -176,18 +176,18 @@ backend/
 2. User connects phone to AP
    └─► Enters home WiFi credentials
        └─► Hub connects to home WiFi
-           └─► Hub POSTs to /api/devices/register/
+           └─► Hub POSTs to /api/hub/register/
                └─► Backend stores hub IP
 
 3. User goes to website
    └─► Enters hub serial number
-       └─► Frontend POSTs to /api/devices/claim/
+       └─► Frontend POSTs to /api/hub/claim/
            └─► Backend links device to user
                └─► Celery task: push_config_to_hub
                    └─► Encrypts API key + Kasa creds
                        └─► POSTs to hub's /api/config
                            └─► Hub applies config
-                               └─► Hub POSTs to /api/devices/sync/
+                               └─► Hub POSTs to /api/hub/sync/
                                    └─► Backend creates EdgeDevice records
                                        for all discovered PIR/Kasa devices
 ```

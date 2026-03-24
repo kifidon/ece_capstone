@@ -64,7 +64,7 @@ def device_register(request):
     Hub calls this on boot (after WiFi setup) with its serial number.
     Updates the hub's IP address. If already claimed by a user, pushes config immediately.
 
-    POST /api/devices/register/
+    POST /api/hub/register/
     Body: { "serial_number": "..." }
     """
     serial_number = request.data.get("serial_number")
@@ -104,7 +104,7 @@ def device_claim(request):
     Links the device (and child devices if it's a hub) to the user.
     If it's a hub, pushes config to it.
 
-    POST /api/devices/claim/
+    POST /api/hub/claim/
     Body: { "serial_number": "..." }
     """
     serial_number = request.data.get("serial_number")
@@ -143,7 +143,7 @@ def register_discovered_devices(request, hub):
     Hub sends its discovered devices (PIR sensors, Kasa plugs) to be registered.
     Creates new EdgeDevice records linked to the hub, or updates existing ones.
 
-    POST /api/devices/sync/
+    POST /api/hub/sync/
     Headers: X-API-Key: <hub's api key>
     Body: {
         "hub_serial": "...",
@@ -218,6 +218,7 @@ def register_discovered_devices(request, hub):
 @permission_classes([AllowAny])
 def hub_config(request, serial_number):
     """
+    GET /api/hub/<serial>/config/
     Fallback endpoint for hub to fetch its config.
     Primary flow is push-based via push_config_to_hub.
     """
