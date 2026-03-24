@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('api', '0004_edgeevent_trigger_device'),
+        ('api', '0005_edgeevent_alert_reasoning_alter_edgeevent_hub_device'),
     ]
 
     operations = [
