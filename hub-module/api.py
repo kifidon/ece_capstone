@@ -111,15 +111,18 @@ async def motion_detected():
         ]
     )
     
-    logger.info(f"Sending payload to server")
-    # send to server (fire-and-forget, do not await response)
-    async def forward_payload():
-        async with httpx.AsyncClient() as client:
-            try:
-                await client.post(f"{BACKEND_URL}/api/events/", json=payload)
-            except Exception as e:
-                logger.warning(f"Fire-and-forget POST failed: {e}")
+    if not BACKEND_URL:
+        logger.error("BACKEND_URL is not set; cannot POST /api/events/")
+        return jsonify({"error": "BACKEND_URL not configured on hub"}), 500
 
-    import asyncio
-    asyncio.create_task(forward_payload())
+    url = f"{BACKEND_URL.rstrip('/')}/api/events/"
+    logger.info("POSTing event to %s", url)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+    except Exception as e:
+        logger.warning("POST to backend failed: %s", e)
+        return jsonify({"error": "Failed to forward event to backend", "detail": str(e)}), 502
+
     return jsonify(payload), 200
