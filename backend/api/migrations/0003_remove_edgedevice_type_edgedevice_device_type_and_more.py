@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
             model_name='edgedevice',
             name='location',
             field=models.CharField(blank=True, choices=[('living_room', 'Living Room'), ('bedroom', 'Bedroom'), ('kitchen', 'Kitchen'), ('bathroom', 'Bathroom'), ('office', 'Office'), ('garage', 'Garage')], default='living_room', max_length=20, null=True),
-        ),
+        ), 
         migrations.AlterField(
             model_name='edgeevent',
             name='hub_device',
