@@ -21,8 +21,8 @@ _poller: DevicePoller | None = None
 
 def init_api(camera_buffer=None, movenet_processor=None, poller=None):
     """Call from app.py after creating camera_buffer and loading movenet. Pass the same instances."""
-    global _camera_buffer, _movenet, _poller
-    _camera_buffer = camera_buffer
+    global _camera, _movenet, _poller
+    _camera = camera_buffer
     _movenet = movenet_processor
     _poller = poller
 
