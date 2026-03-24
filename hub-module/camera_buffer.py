@@ -11,12 +11,14 @@ Env:
   HUB_CAMERA_FPS        - Capture rate (default: 30)
   HUB_CAMERA_WIDTH      - Frame width (default: 640)
   HUB_CAMERA_HEIGHT     - Frame height (default: 480)
-  (Device is always auto-selected: /dev/video* in order, then indices 0–3.)
+  (Device auto-select: /dev/video* by numeric suffix, then indices 0–7; first node
+   that returns a real frame wins — avoids USB metadata-only nodes like video0.)
 """
 
 import glob
 import logging
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -31,11 +33,49 @@ except ImportError:
     HAS_CV2 = False
 
 
+def _video_paths_natural_order() -> list[str]:
+    """Sort /dev/video0, video1, … video10 so low indices (often real USB capture) come first."""
+
+    def _suffix_num(p: str) -> int:
+        m = re.search(r"(\d+)$", p)
+        return int(m.group(1)) if m else 0
+
+    return sorted(glob.glob("/dev/video*"), key=_suffix_num)
+
+
+def _probe_capture_device(dev, width: int, height: int, fps: int):
+    """
+    Open a V4L2 node and require at least one successful frame read.
+    Many USB webcams expose a metadata node (e.g. video0) that opens but never reads;
+    the capture stream is often video1.
+    """
+    cap = cv2.VideoCapture(dev)
+    if not cap.isOpened():
+        try:
+            cap.release()
+        except Exception:
+            pass
+        return None
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    cap.set(cv2.CAP_PROP_FPS, fps)
+    for _ in range(30):
+        ret, frame = cap.read()
+        if ret and frame is not None and getattr(frame, "size", 0) > 0:
+            return cap
+        time.sleep(0.04)
+    try:
+        cap.release()
+    except Exception:
+        pass
+    return None
+
+
 def _enumerate_camera_candidates() -> list:
-    """Prefer V4L2 device nodes, then numeric indices (covers path vs index quirks)."""
-    paths = sorted(glob.glob("/dev/video*"))
-    out: list = list(paths)
-    for idx in range(4):
+    """V4L2 paths in numeric order, then integer indices (same hardware, different APIs)."""
+    out: list = []
+    out.extend(_video_paths_natural_order())
+    for idx in range(8):
         out.append(idx)
     return out
 
@@ -124,16 +164,18 @@ class CameraRingBuffer:
         self._cap = None
         for dev in _enumerate_camera_candidates():
             tried.append(repr(dev))
-            cap = cv2.VideoCapture(dev)
-            if cap.isOpened():
+            cap = _probe_capture_device(dev, self.width, self.height, self.capture_fps)
+            if cap is not None:
                 self._cap = cap
                 self.device = dev
-                logger.info("Using camera device %r", dev)
+                logger.info("Using camera device %r (verified frame read)", dev)
                 break
-            cap.release()
 
         if self._cap is None or not self._cap.isOpened():
-            msg = f"Could not open any camera; tried: [{', '.join(tried)}]"
+            msg = (
+                "Could not open any camera with a working frame stream; tried: "
+                f"[{', '.join(tried)}]"
+            )
             logger.error(msg)
             with self._status_lock:
                 self._open_error = msg
@@ -143,10 +185,6 @@ class CameraRingBuffer:
         with self._status_lock:
             self._open_error = None
             self._opened_ok = True
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        # Hint capture rate (many USB cams will approximate)
-        self._cap.set(cv2.CAP_PROP_FPS, self.capture_fps)
         interval = 1.0 / self.capture_fps
 
         while not self._stop.is_set():
