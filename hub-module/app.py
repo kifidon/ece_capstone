@@ -223,5 +223,12 @@ def unhandled_exception(error):
 
 
 if __name__ == "__main__":
-    init()
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    # Werkzeug's debug reloader runs a parent watcher + a child that serves HTTP. Each
+    # process has its own globals, so camera/poller threads started in the parent do
+    # not match the camera_buffer instance used by /api/camera/status in the child.
+    _port = int(os.environ.get("HUB_HTTP_PORT", "5050"))
+    _debug = os.environ.get("HUB_FLASK_DEBUG", "1").lower() in ("1", "true", "yes")
+    _reloader = os.environ.get("HUB_FLASK_RELOADER", "").lower() in ("1", "true", "yes")
+    if (not _debug) or (not _reloader) or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        init()
+    app.run(host="0.0.0.0", port=_port, debug=_debug, use_reloader=_reloader and _debug)
