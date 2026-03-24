@@ -94,7 +94,12 @@ _on_wifi_failed = partial(on_wifi_failed, hub_state)
 
 init_captive_portal(HUB_SERIAL, hub_state, wifi, poller, _on_wifi_connected, _on_wifi_failed)
 app.register_blueprint(captive_portal_bp)
-init_api_blueprint(camera_buffer=camera_buffer, movenet_processor=movenet_processor, poller=poller)
+init_api_blueprint(
+    camera_buffer=camera_buffer,
+    movenet_processor=movenet_processor,
+    poller=poller,
+    hub_state=hub_state,
+)
 app.register_blueprint(api_bp, url_prefix="/api")
 
 

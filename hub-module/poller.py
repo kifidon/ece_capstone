@@ -65,15 +65,31 @@ class DevicePoller:
         while True:
             try:
                 data, (sender_ip, _) = self._sock.recvfrom(1024)
+            except OSError as e:
+                logger.error("PIR recv failed: %s", e)
+                time.sleep(0.5)
+                continue
+
+            try:
                 message = data.decode("utf-8").strip()
-                parts = message.split(":")
+            except UnicodeDecodeError:
+                # Port 9999 sees random LAN noise (SSDP, other apps); only ESP text beacons are UTF-8.
+                logger.debug(
+                    "Ignoring non-UTF-8 datagram on port %s from %s (%d bytes)",
+                    self.PIR_BROADCAST_PORT,
+                    sender_ip,
+                    len(data),
+                )
+                continue
 
-                if len(parts) != 3:
-                    logger.warning(f"Malformed broadcast from {sender_ip}: {message}")
-                    continue
+            parts = message.split(":")
+            if len(parts) != 3:
+                logger.debug("Skipping non-PIR-shaped message from %s", sender_ip)
+                continue
 
-                serial_number, device_type, battery_str = parts
+            serial_number, device_type, battery_str = parts
 
+            try:
                 existing = next(
                     (d for d in self.discovered_devices if d.serial_number == serial_number),
                     None,
@@ -93,12 +109,11 @@ class DevicePoller:
                 try:
                     device.battery_level = int(battery_str)
                 except ValueError:
-                    logger.warning(f"Invalid battery level from {sender_ip}: {battery_str}")
+                    logger.warning("Invalid battery level from %s: %s", sender_ip, battery_str)
                 self.discovered_devices.append(device)
-                logger.info(f"Discovered {device}")
-
+                logger.info("Discovered %s", device)
             except Exception as e:
-                logger.error(f"Error receiving PIR broadcast: {e}")
+                logger.error("Error handling PIR broadcast from %s: %s", sender_ip, e)
                 
     def get_devices(self, device_type: str | None = None) -> list[Device]:
         if device_type is None:
@@ -236,6 +251,12 @@ class DevicePoller:
             if device.serial_number == serial_number:
                 return device
         raise ValueError(f"Device not found: {serial_number}")
+
+    def try_get_device_by_serial(self, serial_number: str) -> Device | None:
+        for device in self.discovered_devices:
+            if device.serial_number == serial_number:
+                return device
+        return None
 
     def stop(self):
         if self._sock:
