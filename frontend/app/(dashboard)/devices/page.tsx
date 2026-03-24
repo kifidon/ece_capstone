@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { listDevices, claimDevice, type Device, ApiError } from '@/lib/api';
+import {
+  listDevices,
+  claimDevice,
+  formatDeviceTypeLabel,
+  type Device,
+  ApiError,
+} from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,7 +69,7 @@ function DeviceCard({ device }: { device: Device }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="font-medium text-foreground capitalize">
-                {device.device_type.replace('_', ' ')}
+                {formatDeviceTypeLabel(device.device_type)}
               </h3>
               {device.is_active ? (
                 <Badge className="bg-primary/20 text-primary border-primary/30">
@@ -213,8 +219,9 @@ export default function DevicesPage() {
 
     try {
       const response = await claimDevice(token, serial);
+      const kind = formatDeviceTypeLabel(response.device?.device_type ?? null);
       toast.success('Device claimed successfully', {
-        description: `${response.device.device_type.replace('_', ' ')} has been added to your account.`,
+        description: `${kind} has been added to your account.`,
       });
       await fetchDevices();
     } catch (err) {
@@ -230,10 +237,9 @@ export default function DevicesPage() {
         }
       } else {
         toast.error('Failed to claim device', {
-          description: 'An unexpected error occurred',
+          description: err instanceof Error ? err.message : 'An unexpected error occurred',
         });
       }
-      throw err;
     }
   };
 
@@ -395,7 +401,7 @@ export default function DevicesPage() {
                     <div className="flex items-center gap-2">
                       <DeviceTypeIcon type={device.device_type} />
                       <span className="capitalize text-foreground">
-                        {device.device_type.replace('_', ' ')}
+                        {formatDeviceTypeLabel(device.device_type)}
                       </span>
                     </div>
                   </TableCell>

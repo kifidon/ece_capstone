@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { listDevices, listEvents, type Device, type Event } from '@/lib/api';
+import {
+  listDevices,
+  listEvents,
+  formatDeviceTypeLabel,
+  type Device,
+  type Event,
+} from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -304,7 +310,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground capitalize">
-                        {device.device_type.replace('_', ' ')}
+                        {formatDeviceTypeLabel(device.device_type)}
                       </p>
                       <p className="text-xs text-muted-foreground font-mono">
                         {device.serial_number}

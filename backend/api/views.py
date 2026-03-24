@@ -76,6 +76,15 @@ def device_register(request):
 
     device = get_object_or_404(EdgeDevice, serial_number=serial_number)
 
+    if device.device_type != "smart_hub":
+        return JsonResponse(
+            {
+                "error": "Hub check-in requires device_type 'smart_hub' on the EdgeDevice row.",
+                "device_type": device.device_type,
+            },
+            status=400,
+        )
+
     client_ip = request.META.get("HTTP_X_FORWARDED_FOR", request.META.get("REMOTE_ADDR"))
     if client_ip and "," in client_ip: # if the request is coming from a proxy, get the first IP address
         client_ip = client_ip.split(",")[0].strip()

@@ -6,13 +6,15 @@ into a fixed-size ring buffer. Callers can read the current buffer (e.g. on PIR
 trigger) or export it to a video file.
 
 Env:
-  HUB_CAMERA_DEVICE   - Device index or path (default: 0)
-  HUB_CAMERA_BUFFER_S - Seconds to retain (default: 10)
-  HUB_CAMERA_FPS      - Capture rate (default: 30)
-  HUB_CAMERA_WIDTH    - Frame width (default: 640)
-  HUB_CAMERA_HEIGHT   - Frame height (default: 480)
+  HUB_CAMERA_ENABLED    - Set to 1 / true / yes to enable the rolling buffer
+  HUB_CAMERA_BUFFER_S   - Seconds to retain (default: 10)
+  HUB_CAMERA_FPS        - Capture rate (default: 30)
+  HUB_CAMERA_WIDTH      - Frame width (default: 640)
+  HUB_CAMERA_HEIGHT     - Frame height (default: 480)
+  (Device is always auto-selected: /dev/video* in order, then indices 0–3.)
 """
 
+import glob
 import logging
 import os
 import threading
@@ -29,12 +31,13 @@ except ImportError:
     HAS_CV2 = False
 
 
-def _default_device():
-    v = os.environ.get("HUB_CAMERA_DEVICE", "0")
-    try:
-        return int(v)
-    except ValueError:
-        return v  # e.g. /dev/video0
+def _enumerate_camera_candidates() -> list:
+    """Prefer V4L2 device nodes, then numeric indices (covers path vs index quirks)."""
+    paths = sorted(glob.glob("/dev/video*"))
+    out: list = list(paths)
+    for idx in range(4):
+        out.append(idx)
+    return out
 
 
 def from_env():
@@ -45,7 +48,6 @@ def from_env():
         logger.warning("HUB_CAMERA_ENABLED=1 but opencv-python-headless not installed; camera buffer disabled.")
         return None
     return CameraRingBuffer(
-        device=_default_device(),
         buffer_seconds=int(os.environ.get("HUB_CAMERA_BUFFER_S", "10")),
         capture_fps=int(os.environ.get("HUB_CAMERA_FPS", "30")),
         width=int(os.environ.get("HUB_CAMERA_WIDTH", "640")),
@@ -61,7 +63,6 @@ class CameraRingBuffer:
 
     def __init__(
         self,
-        device=_default_device(),
         buffer_seconds=20,
         capture_fps=30,
         width=640,
@@ -69,7 +70,8 @@ class CameraRingBuffer:
     ):
         if not HAS_CV2:
             raise RuntimeError("opencv-python-headless is required for camera buffer. pip install opencv-python-headless")
-        self.device = device
+        # Set to the first device OpenCV opens successfully (see _capture_loop).
+        self.device: int | str = "auto"
         self.buffer_seconds = buffer_seconds
         self.capture_fps = capture_fps
         self.width = width
@@ -80,18 +82,27 @@ class CameraRingBuffer:
         self._thread = None
         self._stop = threading.Event()
         self._cap = None
+        self._opened_ok = False
+        self._open_error: str | None = None
+        self._status_lock = threading.Lock()
 
     def start(self):
         """Start the capture thread. Idempotent."""
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
+        with self._status_lock:
+            self._opened_ok = False
+            self._open_error = None
         self._thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
         logger.info(
-            "Camera ring buffer started: device=%s, %ds @ %d fps (%dx%d), max_frames=%d",
-            self.device, self.buffer_seconds, self.capture_fps,
-            self.width, self.height, self._max_frames,
+            "Camera ring buffer started: probing /dev/video* then indices 0–3; %ds @ %d fps (%dx%d), max_frames=%d",
+            self.buffer_seconds,
+            self.capture_fps,
+            self.width,
+            self.height,
+            self._max_frames,
         )
 
     def stop(self):
@@ -109,10 +120,29 @@ class CameraRingBuffer:
         logger.info("Camera ring buffer stopped.")
 
     def _capture_loop(self):
-        self._cap = cv2.VideoCapture(self.device)
-        if not self._cap.isOpened():
-            logger.error("Could not open camera device: %s", self.device)
+        tried: list[str] = []
+        self._cap = None
+        for dev in _enumerate_camera_candidates():
+            tried.append(repr(dev))
+            cap = cv2.VideoCapture(dev)
+            if cap.isOpened():
+                self._cap = cap
+                self.device = dev
+                logger.info("Using camera device %r", dev)
+                break
+            cap.release()
+
+        if self._cap is None or not self._cap.isOpened():
+            msg = f"Could not open any camera; tried: [{', '.join(tried)}]"
+            logger.error(msg)
+            with self._status_lock:
+                self._open_error = msg
+                self._opened_ok = False
             return
+
+        with self._status_lock:
+            self._open_error = None
+            self._opened_ok = True
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         # Hint capture rate (many USB cams will approximate)
@@ -151,6 +181,18 @@ class CameraRingBuffer:
         """Number of frames currently in the buffer."""
         with self._lock:
             return len(self._deque)
+
+    def is_capturing(self) -> bool:
+        """True if the capture thread is running and the device opened successfully."""
+        th = self._thread
+        if th is None or not th.is_alive():
+            return False
+        with self._status_lock:
+            return self._opened_ok
+
+    def get_open_error(self) -> str | None:
+        with self._status_lock:
+            return self._open_error
 
     def save_buffer_to_video(self, path, fps=None):
         """

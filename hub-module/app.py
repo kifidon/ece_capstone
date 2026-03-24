@@ -190,10 +190,14 @@ def list_devices():
 def camera_status():
     """Return whether camera buffer is active and current frame count."""
     if camera_buffer is None:
-        return jsonify({"enabled": False, "frames": 0})
+        return jsonify({"enabled": False, "capturing": False, "frames": 0, "device": None, "error": None})
+    dev = camera_buffer.device
     return jsonify({
         "enabled": True,
+        "capturing": camera_buffer.is_capturing(),
         "frames": camera_buffer.get_frame_count(),
+        "device": dev if isinstance(dev, str) else str(dev),
+        "error": camera_buffer.get_open_error(),
     })
 
 @app.errorhandler(404)

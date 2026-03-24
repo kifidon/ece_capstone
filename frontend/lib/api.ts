@@ -64,7 +64,8 @@ export interface LoginResponse {
 
 export interface Device {
   id: string;
-  device_type: 'smart_hub' | 'pir_sensor' | 'smart_plug';
+  /** Backend allows null until the row is fully configured */
+  device_type: 'smart_hub' | 'pir_sensor' | 'smart_plug' | null;
   serial_number: string;
   hub_device: string | null;
   user: number;
@@ -74,6 +75,12 @@ export interface Device {
   special_use: string | null;
   ip_address: string | null;
   is_provisioned: boolean;
+}
+
+/** Safe label for UI; avoids crashing when API returns null device_type */
+export function formatDeviceTypeLabel(type: Device['device_type']): string {
+  if (!type || typeof type !== 'string') return 'Device';
+  return type.replace(/_/g, ' ');
 }
 
 export interface ClaimResponse {
