@@ -33,3 +33,4 @@ google-genai
 gunicorn>=22.0.0
 whitenoise>=6.6.0
 honcho>=1.1.0
+
