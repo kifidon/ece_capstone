@@ -58,6 +58,52 @@ class EdgeDeviceView(ModelViewSet):
         return EdgeDevice.objects.filter(user=self.request.user)
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def hub_get_config(request):
+    """
+    Hub calls this to pull its config (Kasa credentials, api_key, hub_device_id).
+    Requires X-API-Key header (hub's stored API key) and hub_serial in query params.
+    
+    GET /api/hub/config/?hub_serial=<serial>
+    Returns: {"encrypted": "Fernet-encrypted JSON"}
+    """
+    from cryptography.fernet import Fernet
+    from django.conf import settings
+    
+    hub_serial = request.query_params.get("hub_serial")
+    if not hub_serial:
+        return JsonResponse({"error": "hub_serial required in query params"}, status=400)
+    
+    hub = get_object_or_404(EdgeDevice, serial_number=hub_serial, device_type="smart_hub")
+    
+    api_key = request.headers.get("X-API-Key")
+    if not api_key or api_key != hub.api_key:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+    
+    if not hub.user:
+        return JsonResponse(
+            {"error": "Hub not yet claimed by a user"},
+            status=403
+        )
+    
+    payload = {
+        "api_key": hub.api_key,
+        "hub_device_id": str(hub.id),
+        "kasa_username": hub.user.kasa_username,
+        "kasa_password": hub.user.kasa_password,
+    }
+    
+    try:
+        f = Fernet(settings.FIELD_ENCRYPTION_KEY.encode())
+        encrypted = f.encrypt(json.dumps(payload).encode()).decode()
+        logger.info(f"Config provided to hub {hub_serial}")
+        return JsonResponse({"encrypted": encrypted})
+    except Exception as e:
+        logger.error(f"Failed to encrypt config for hub {hub_serial}: {e}")
+        return JsonResponse({"error": "Config encryption failed"}, status=500)
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def device_register(request):
@@ -106,11 +152,12 @@ def device_register(request):
     device.save(update_fields=["ip_address", "is_active"])
 
     if device.user:
-        push_config_to_hub.delay(str(device.id))
+        # Hub now pulls config on its own after check-in; no push needed
+        logger.info(f"Hub {device.serial_number} is claimed. Hub will pull config on check-in.")
         return JsonResponse({
             "status": "claimed",
             "hub_device_id": str(device.id),
-            "message": "Config push scheduled.",
+            "message": "Hub is claimed. Config will be pulled by hub on next check-in.",
         })
 
     return JsonResponse({
@@ -164,19 +211,30 @@ def device_claim(request):
 @require_hub_api_key(serial_field="hub_serial")
 def register_discovered_devices(request, hub):
     """
-    Hub sends its discovered devices (PIR sensors, Kasa plugs) to be registered.
-    Creates new EdgeDevice records linked to the hub, or updates existing ones.
+    Hub sends its discovered devices (PIR sensors, Kasa plugs) to be registered/updated.
+    Creates new EdgeDevice records linked to the hub, or updates existing ones with latest state.
 
     POST /api/hub/sync/
     Headers: X-API-Key: <hub's api key>
     Body: {
         "hub_serial": "...",
         "devices": [
-            {"serial_number": "...", "device_type": "pir_sensor", "battery_level": 95},
-            {"serial_number": "...", "device_type": "smart_plug"},
+            {
+                "serial_number": "...",
+                "device_type": "pir_sensor",
+                "battery_level": 95,
+                "last_seen": 1710000000.0,
+                "alias": "Living Room PIR"
+            },
+            {
+                "serial_number": "...",
+                "device_type": "smart_plug",
+                "is_on": true,
+                "battery_level": null,
+                "alias": "Lamp"
+            }
         ]
     }
-    Each device must include serial_number and device_type (pir_sensor or smart_plug). Missing or invalid values return 400.
     """
     devices = request.data.get("devices", [])
     if not isinstance(devices, list):
@@ -218,15 +276,21 @@ def register_discovered_devices(request, hub):
         if isinstance(dtype, str):
             dtype = dtype.strip()
 
+        # Build update dict with all available fields
+        update_dict = {
+            "device_type": dtype,
+            "hub_device": hub,
+            "user": hub.user,
+            "is_active": True,
+        }
+        
+        # Optional fields from hub payload
+        if "battery_level" in dev_data:
+            update_dict["battery_level"] = dev_data["battery_level"]
+        
         device, was_created = EdgeDevice.objects.update_or_create(
             serial_number=serial,
-            defaults={
-                "device_type": dtype,
-                "hub_device": hub,
-                "user": hub.user,
-                "battery_level": dev_data.get("battery_level"),
-                "is_active": True,
-            },
+            defaults=update_dict,
         )
 
         if was_created:

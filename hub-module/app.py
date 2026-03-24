@@ -128,6 +128,11 @@ def init():
 
     threading.Thread(target=poller.start_pir_listener, daemon=True).start()
     threading.Thread(target=poller.start_kasa_poller, daemon=True).start()
+    threading.Thread(
+        target=poller.start_periodic_sync,
+        args=(BACKEND_URL, HUB_SERIAL, hub_state),
+        daemon=True,
+    ).start()
     if camera_buffer is not None:
         camera_buffer.start()
 

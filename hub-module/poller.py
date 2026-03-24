@@ -120,6 +120,48 @@ class DevicePoller:
             return self.discovered_devices
         return [d for d in self.discovered_devices if d.device_type == device_type]
 
+    def start_periodic_sync(self, backend_url: str, hub_serial: str, hub_state: dict):
+        """
+        Every 5 minutes, send all discovered devices (with latest state) to the backend.
+        Runs in a background thread.
+        """
+        import requests
+        
+        interval = 5 * 60  # 5 minutes
+        while True:
+            time.sleep(interval)
+            
+            api_key = hub_state.get("api_key")
+            if not api_key:
+                logger.debug("Skipping periodic sync: no API key yet")
+                continue
+            
+            devices_payload = [d.to_registration_payload() for d in self.discovered_devices]
+            if not devices_payload:
+                logger.debug("No devices to sync")
+                continue
+            
+            payload = {
+                "hub_serial": hub_serial,
+                "devices": devices_payload,
+            }
+            
+            try:
+                url = f"{backend_url.rstrip('/')}/api/hub/sync/"
+                resp = requests.post(
+                    url,
+                    json=payload,
+                    headers={"X-API-Key": api_key},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                logger.info(
+                    f"Periodic device sync: {data.get('created', 0)} created, {data.get('updated', 0)} updated"
+                )
+            except requests.RequestException as e:
+                logger.error(f"Periodic sync failed: {e}")
+
     # --- Send WiFi credentials to PIR devices ---
 
     @staticmethod

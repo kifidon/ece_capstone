@@ -7,6 +7,67 @@ logger = logging.getLogger(__name__)
 from poller import DevicePoller
 
 
+def pull_config_from_backend(
+    backend_url: str,
+    hub_serial: str,
+    hub_state: dict,
+) -> bool:
+    """
+    Hub polls the backend for its config (after check-in).
+    If the hub has an api_key in hub_state, use it in the X-API-Key header.
+    Returns True on success, False on failure.
+    """
+    if not hub_state.get("api_key"):
+        logger.warning("Cannot pull config: no API key in hub_state yet (hub not claimed?)")
+        return False
+
+    url = f"{backend_url.rstrip('/')}/api/hub/config/?hub_serial={hub_serial}"
+    headers = {"X-API-Key": hub_state["api_key"]}
+
+    logger.info("Pulling config from backend at %s", url)
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        encrypted_payload = data.get("encrypted")
+        if not encrypted_payload:
+            logger.error("Backend returned no encrypted config")
+            return False
+
+        # Decrypt and parse (same logic as /api/config POST)
+        from cryptography.fernet import Fernet
+        import json
+        import os
+
+        encryption_key = os.environ.get("FIELD_ENCRYPTION_KEY", "").strip()
+        if not encryption_key:
+            logger.error("FIELD_ENCRYPTION_KEY not set; cannot decrypt config")
+            return False
+
+        f = Fernet(encryption_key.encode())
+        decrypted = json.loads(f.decrypt(encrypted_payload.encode()))
+
+        # Store in hub_state
+        hub_state["api_key"] = decrypted.get("api_key", hub_state.get("api_key"))
+        hub_state["hub_device_id"] = decrypted.get("hub_device_id")
+        
+        # Store Kasa creds for poller (could also return them)
+        hub_state["kasa_username"] = decrypted.get("kasa_username")
+        hub_state["kasa_password"] = decrypted.get("kasa_password")
+
+        logger.info("Config pulled successfully from backend")
+        return True
+
+    except requests.RequestException as e:
+        logger.error("Failed to pull config from backend: %s", e)
+        return False
+    except Exception as e:
+        logger.error("Failed to decrypt config from backend: %s", e)
+        return False
+
+
 def checkin_with_backend(
     backend_url: str,
     hub_serial: str,
@@ -47,12 +108,20 @@ def checkin_with_backend(
 
 
 def boot_checkin_loop(backend_url: str, hub_serial: str, hub_state: dict, report_ipv4) -> None:
-    """On every boot: retry check-in so the backend refreshes hub IP and can push config."""
+    """
+    On every boot: retry check-in, then pull config.
+    Hub will not start Kasa polling until config is pulled.
+    """
     time.sleep(5)
     for attempt in range(1, 6):
         ip = report_ipv4() if callable(report_ipv4) else None
         if checkin_with_backend(backend_url, hub_serial, hub_state, local_ip=ip):
             logger.info("Boot check-in succeeded (attempt %s)", attempt)
+            # Pull config from backend after successful check-in
+            if pull_config_from_backend(backend_url, hub_serial, hub_state):
+                logger.info("Config pulled from backend")
+            else:
+                logger.warning("Failed to pull config; will retry on next sync")
             return
         logger.warning("Boot check-in failed (attempt %s/5); retrying in 10s...", attempt)
         time.sleep(10)
