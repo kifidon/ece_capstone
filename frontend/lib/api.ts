@@ -1,10 +1,20 @@
+import { clearAuthStorageAndRedirectToLogin } from './auth-storage';
+
 /**
  * Next.js injects NEXT_PUBLIC_* at build time. For local dev, use `.env.development` or `.env.local`.
  * If the value has no scheme (e.g. "localhost:8000"), we prepend http:// so fetch() works.
+ * Without a base URL, relative `/api/...` requests hit the Next.js origin, not Django — so we default
+ * to the local backend in development only.
  */
 function normalizeApiBaseUrl(): string {
   let raw = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim();
-  if (!raw) return '';
+  if (!raw) {
+    if (process.env.NODE_ENV === 'development') {
+      raw = 'http://127.0.0.1:8000';
+    } else {
+      return '';
+    }
+  }
   raw = raw.replace(/\/+$/, '');
   if (!/^https?:\/\//i.test(raw)) {
     raw = `http://${raw.replace(/^\/+/, '')}`;
@@ -56,8 +66,11 @@ export interface Event {
   is_alert: boolean;
   is_resolved: boolean;
   is_processed: boolean;
-  device_state: Record<string, unknown>;
-  trigger_device: Record<string, unknown>;
+  /** Hub snapshot: usually a JSON array of device objects */
+  device_state: unknown;
+  trigger_device: unknown;
+  /** Populated when `is_alert` and Gemini post-process flagged the event */
+  alert_reasoning?: string | null;
   keypoints: unknown;
   inference_result: unknown;
 }
@@ -73,8 +86,20 @@ class ApiError extends Error {
   }
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
+type HandleResponseOptions = {
+  /** false for login — 401 is wrong password, not an expired session */
+  redirectOnUnauthorized?: boolean;
+};
+
+async function handleResponse<T>(
+  response: Response,
+  options: HandleResponseOptions = {}
+): Promise<T> {
+  const { redirectOnUnauthorized = true } = options;
   if (!response.ok) {
+    if (response.status === 401 && redirectOnUnauthorized) {
+      clearAuthStorageAndRedirectToLogin();
+    }
     let errorData;
     try {
       errorData = await response.json();
@@ -90,6 +115,23 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+/** DRF list endpoints return a JSON array unless pagination is enabled (`{ results: [...] }`). */
+async function handleListResponse<T>(
+  response: Response,
+  options: HandleResponseOptions = {}
+): Promise<T[]> {
+  const data = await handleResponse<unknown>(response, options);
+  if (Array.isArray(data)) return data as T[];
+  if (
+    data !== null &&
+    typeof data === 'object' &&
+    Array.isArray((data as { results?: unknown }).results)
+  ) {
+    return (data as { results: T[] }).results;
+  }
+  throw new ApiError('Unexpected API list response shape', response.status, data);
+}
+
 export async function register(
   username: string,
   email: string,
@@ -100,7 +142,7 @@ export async function register(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
   });
-  return handleResponse<{ message: string }>(response);
+  return handleResponse<{ message: string }>(response, { redirectOnUnauthorized: false });
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
@@ -109,7 +151,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  return handleResponse<LoginResponse>(response);
+  return handleResponse<LoginResponse>(response, { redirectOnUnauthorized: false });
 }
 
 export async function updateProfile(
@@ -138,7 +180,7 @@ export async function listDevices(token: string): Promise<Device[]> {
   const response = await fetch(`${API_BASE_URL}/api/devices/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return handleResponse<Device[]>(response);
+  return handleListResponse<Device>(response);
 }
 
 export async function getDevice(token: string, id: string): Promise<Device> {
@@ -164,7 +206,7 @@ export async function listEvents(token: string): Promise<Event[]> {
   const response = await fetch(`${API_BASE_URL}/api/events/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return handleResponse<Event[]>(response);
+  return handleListResponse<Event>(response);
 }
 
 export async function getEvent(token: string, id: string): Promise<Event> {
@@ -180,6 +222,9 @@ export async function deleteEvent(token: string, id: string): Promise<void> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthStorageAndRedirectToLogin();
+    }
     throw new ApiError('Failed to delete event', response.status, null);
   }
 }

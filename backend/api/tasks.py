@@ -12,6 +12,7 @@ from google import genai
 from .models import EdgeEvent, EdgeDevice
 from dashboard.models import CustomUser
 from pydantic import BaseModel, Field
+from django.db.models import Q
 from django.utils import timezone
 from config.settings import GEMINI_API_KEY
 
@@ -19,6 +20,18 @@ if TYPE_CHECKING:
     from .ml.ml import MLProcessor
 
 logger = logging.getLogger(__name__)
+
+
+def _edge_events_for_user(user: CustomUser):
+    """Same device scope as EdgeEventView: hub or peripheral tied to this user's hub."""
+    device_ids = EdgeDevice.objects.filter(
+        Q(user=user) | Q(hub_device__user=user)
+    ).values_list("id", flat=True)
+    return EdgeEvent.objects.filter(
+        hub_device_id__in=device_ids,
+        hub_device__is_active=True,
+        is_deleted=False,
+    )
 
 # Load TensorFlow/Keras only when running inference (Celery worker), not when the web
 # process imports this module for .delay() — critical for low-memory hosts (e.g. Render 512MB).
@@ -175,7 +188,11 @@ class EdgeEventProcessor():
             },
         )
         parsed = AnomalyDetectionResponse.model_validate_json(response.text)
-        print(f"\n\n\n\nAnomaly detection parsed: {parsed.model_dump()}")
+        logger.info(
+            "Anomaly detection (Gemini): %d anomaly(es) flagged of %d new event(s)",
+            len(parsed.results),
+            len(safe_new_events),
+        )
         return parsed.model_dump()
     
 
@@ -187,22 +204,19 @@ class EdgeEventProcessor():
         """
         users = CustomUser.objects.all()
         for user in users:
+            base = _edge_events_for_user(user)
             historic_events = list(
-                EdgeEvent.objects.filter(
-                    hub_device__user=user,
-                    hub_device__is_active=True,
+                base.filter(
                     is_processed=True,
                     timestamp__gte=timezone.now() - timezone.timedelta(days=7),
                 ).values("id", "timestamp", "action", "pose_classification")
             )
             events_to_process = list(
-                EdgeEvent.objects.filter(
-                    hub_device__user=user,
-                    hub_device__is_active=True,
-                    is_processed=False,
-                ).values("id", "timestamp", "action", "pose_classification")
+                base.filter(is_processed=False).values(
+                    "id", "timestamp", "action", "pose_classification"
+                )
             )
-        
+
             anomalies = self._detect_anomalies(historic_events, events_to_process)
             event_ids = [event["id"] for event in events_to_process]
             if not event_ids:

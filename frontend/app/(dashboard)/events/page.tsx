@@ -34,13 +34,16 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import {
+  AlertReasoningPanel,
+  DeviceStateSection,
+  TriggerDeviceSection,
+} from '@/components/events/event-context-display';
+import {
   AlertTriangle,
   CheckCircle,
   Clock,
   Filter,
   Trash2,
-  ChevronDown,
-  ChevronUp,
   Activity,
   X,
 } from 'lucide-react';
@@ -65,7 +68,6 @@ function EventDetailDialog({
   onDelete: (id: string) => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showFullJson, setShowFullJson] = useState(false);
 
   if (!event) return null;
 
@@ -94,7 +96,9 @@ function EventDetailDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
+          <AlertReasoningPanel event={event} />
+
           {/* Summary */}
           <div className="grid grid-cols-2 gap-4">
             <div className="p-3 rounded-lg bg-secondary">
@@ -133,45 +137,11 @@ function EventDetailDialog({
             </Badge>
           </div>
 
-          {/* Device State */}
-          {event.device_state && Object.keys(event.device_state).length > 0 && (
-            <div>
-              <p className="text-sm font-medium text-foreground mb-2">Device State</p>
-              <pre className="p-3 rounded-lg bg-secondary text-xs text-muted-foreground overflow-x-auto">
-                {JSON.stringify(event.device_state, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {/* Trigger Device */}
-          {event.trigger_device && Object.keys(event.trigger_device).length > 0 && (
-            <div>
-              <p className="text-sm font-medium text-foreground mb-2">Trigger Device</p>
-              <pre className="p-3 rounded-lg bg-secondary text-xs text-muted-foreground overflow-x-auto">
-                {JSON.stringify(event.trigger_device, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {/* Full JSON (collapsible) */}
-          <div>
-            <button
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-              onClick={() => setShowFullJson(!showFullJson)}
-            >
-              {showFullJson ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
-              {showFullJson ? 'Hide' : 'Show'} Full Event Data
-            </button>
-            {showFullJson && (
-              <pre className="mt-2 p-3 rounded-lg bg-secondary text-xs text-muted-foreground overflow-x-auto max-h-64">
-                {JSON.stringify(event, null, 2)}
-              </pre>
-            )}
-          </div>
+          <DeviceStateSection deviceState={event.device_state} />
+          <TriggerDeviceSection
+            triggerDevice={event.trigger_device}
+            deviceState={event.device_state}
+          />
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">

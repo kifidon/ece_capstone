@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 
@@ -28,7 +29,14 @@ class EdgeEventView(ModelViewSet):
     def get_queryset(self):
         qs = EdgeEvent.objects.filter(is_deleted=False).order_by('-timestamp')
         if self.request.user.is_authenticated:
-            qs = qs.filter(hub_device__user=self.request.user)
+            # Events may reference the smart_hub or a peripheral. Peripherals sometimes have
+            # user=NULL while the parent hub is claimed; include any device we own or that
+            # hangs off our hub so those events still list correctly.
+            user = self.request.user
+            device_ids = EdgeDevice.objects.filter(
+                Q(user=user) | Q(hub_device__user=user)
+            ).values_list('id', flat=True)
+            qs = qs.filter(hub_device_id__in=device_ids)
         return qs
 
     def perform_create(self, serializer):

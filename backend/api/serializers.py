@@ -18,11 +18,12 @@ class EdgeEventSerializer(serializers.ModelSerializer):
             'id', 'timestamp', 'action', 'device_state', 'devices', 'keypoints',
             'hub_device', 'trigger_device', 'pose_classification', 'inference_result',
             'is_processed', 'is_alert', 'is_resolved', 'is_deleted', 'is_keypoints_normalized',
+            'alert_reasoning',
         ]
         read_only_fields = [
             'id', 'timestamp', 'action', 'pose_classification',
             'inference_result', 'is_processed', 'is_alert', 'is_keypoints_normalized',
-            'device_state',
+            'device_state', 'alert_reasoning',
         ]
         extra_kwargs = {
             'hub_device': {'required': True},
