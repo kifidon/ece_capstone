@@ -85,7 +85,10 @@ async def motion_detected():
     logger.info("Inference complete")
     if not keypoints_list:
         return jsonify({"error": "No keypoints detected"}), 400
-    keypoints_serializable = [kp.tolist() for kp in keypoints_list]
+    # Backend expects {"frame_0": [[y,x,conf], ...], "frame_1": ...} (MoveNet shape per frame).
+    keypoints_serializable = {
+        f"frame_{i}": kp.tolist() for i, kp in enumerate(keypoints_list)
+    }
 
     logger.info("Polling smart plug status")
     smart_plugs = _poller.get_devices("smart_plug")
