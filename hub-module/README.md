@@ -31,9 +31,9 @@ Flask-based firmware for the Raspberry Pi CM4 Smart Hub. Runs as a systemd servi
 2. **Start background threads** — PIR sensor UDP listener (port 9999) and Kasa smart plug poller run continuously.
 3. **User connects phone to AP** — OS detects captive portal and opens the setup page automatically.
 4. **User submits WiFi credentials** — hub stops the AP, connects to home WiFi via `nmcli`, and pushes WiFi creds to discovered PIR sensors (UDP unicast, port 9998).
-5. **Hub checks in with backend** — POSTs its serial number to `/api/devices/register/`. Backend stores the hub's IP.
+5. **Hub checks in with backend** — POSTs its serial number to `/api/hub/register/`. Backend stores the hub's IP.
 6. **Backend pushes config** — if the hub is claimed by a user, the backend sends an encrypted config payload (API key, Kasa credentials) to the hub's `/api/config` endpoint.
-7. **Hub syncs devices** — after receiving config, the hub sends all discovered devices to `/api/devices/sync/` so they're registered in the backend DB.
+7. **Hub syncs devices** — after receiving config, the hub sends all discovered devices to `/api/hub/sync/` so they're registered in the backend DB.
 
 If WiFi connection fails, the AP restarts and the user sees a retry page.
 

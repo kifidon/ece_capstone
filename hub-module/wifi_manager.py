@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import logging
 import platform
@@ -8,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 AP_INTERFACE = "wlan0"
 AP_IP = "192.168.50.1"
+NM_UNMANAGE_WLAN0 = "/etc/NetworkManager/conf.d/10-unmanage-wlan0.conf"
 DHCP_RANGE_START = "192.168.50.10"
 DHCP_RANGE_END = "192.168.50.50"
 
@@ -24,6 +26,179 @@ class WifiManager:
         self.ap_ssid = f"SmartHub-{hub_serial[-6:]}"
         self.is_ap_active = False
         self._is_linux = platform.system() == "Linux"
+
+    def _ensure_wlan0_managed(self) -> None:
+        """Allow NetworkManager to control wlan0 (required for station mode)."""
+        if not self._is_linux or not os.path.isfile(NM_UNMANAGE_WLAN0):
+            return
+        try:
+            os.remove(NM_UNMANAGE_WLAN0)
+            subprocess.run(
+                ["sudo", "systemctl", "reload", "NetworkManager"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            time.sleep(2)
+        except Exception as e:
+            logger.warning("Could not make wlan0 managed: %s", e)
+
+    def _ensure_wlan0_unmanaged_for_ap(self) -> None:
+        """Restore NM drop-in so hostapd can own wlan0 without fighting NetworkManager."""
+        if not self._is_linux:
+            return
+        if os.path.isfile(NM_UNMANAGE_WLAN0):
+            return
+        try:
+            os.makedirs(os.path.dirname(NM_UNMANAGE_WLAN0), exist_ok=True)
+            with open(NM_UNMANAGE_WLAN0, "w") as f:
+                f.write("[keyfile]\nunmanaged-devices=interface-name:wlan0\n")
+            subprocess.run(
+                ["sudo", "systemctl", "reload", "NetworkManager"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            time.sleep(2)
+        except Exception as e:
+            logger.warning("Could not restore wlan0 unmanaged for AP: %s", e)
+
+    def _ethernet_has_ipv4(self) -> bool:
+        """True if a non-wlan interface has a global IPv4 (e.g. eth0, end0)."""
+        if not self._is_linux:
+            return False
+        try:
+            r = subprocess.run(
+                ["ip", "-4", "-o", "addr", "show", "scope", "global"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return False
+        for line in r.stdout.splitlines():
+            m = re.match(r"^\d+:\s+(\S+)\s+inet\s+(\S+)/", line.strip())
+            if not m:
+                continue
+            iface, addr = m.group(1), m.group(2)
+            if iface in ("lo", AP_INTERFACE) or addr.startswith("127."):
+                continue
+            if addr == AP_IP:
+                continue
+            logger.info("Found IPv4 on %s (%s); treating as wired/uplink.", iface, addr)
+            return True
+        return False
+
+    def _wlan0_station_ready(self) -> bool:
+        """True if wlan0 is a connected client with an IP other than the AP address."""
+        if not self._is_linux:
+            return False
+        try:
+            r = subprocess.run(
+                ["nmcli", "-t", "-f", "DEVICE,STATE", "device", "status"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return False
+        state_line = None
+        for line in r.stdout.splitlines():
+            if line.startswith(f"{AP_INTERFACE}:"):
+                state_line = line.split(":", 1)[1].lower()
+                break
+        if not state_line or "connected" not in state_line:
+            return False
+        try:
+            r2 = subprocess.run(
+                ["ip", "-4", "-o", "addr", "show", "dev", AP_INTERFACE, "scope", "global"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return False
+        if not r2.stdout.strip():
+            return False
+        if f" {AP_IP}/" in r2.stdout:
+            return False
+        return True
+
+    def hub_report_ipv4(self) -> str | None:
+        """
+        Best-effort LAN IPv4 to send to the backend on check-in (not the AP address).
+        Prefers wired interfaces over wlan.
+        """
+        if not self._is_linux:
+            return None
+        try:
+            r = subprocess.run(
+                ["ip", "-4", "-o", "addr", "show", "scope", "global"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return None
+        entries: list[tuple[str, str]] = []
+        for line in r.stdout.splitlines():
+            m = re.match(r"^\d+:\s+(\S+)\s+inet\s+(\S+)/", line.strip())
+            if not m:
+                continue
+            iface, addr = m.group(1), m.group(2)
+            if iface == "lo" or addr.startswith("127."):
+                continue
+            if addr == AP_IP:
+                continue
+            entries.append((iface, addr))
+        if not entries:
+            return None
+
+        def _iface_rank(iface: str) -> int:
+            if iface.startswith(("eth", "end", "enp", "eno", "usb", "enx")):
+                return 0
+            if iface == AP_INTERFACE:
+                return 2
+            return 1
+
+        entries.sort(key=lambda t: _iface_rank(t[0]))
+        return entries[0][1]
+
+    def try_existing_lan_before_ap(self) -> bool:
+        """
+        Prefer an existing uplink before starting the captive-portal AP:
+        1) Saved WiFi (NetworkManager on wlan0)
+        2) Ethernet (any other interface with a global IPv4)
+        Returns True if the hub should skip start_ap().
+        """
+        if not self._is_linux:
+            return False
+
+        self._ensure_wlan0_managed()
+
+        deadline = time.monotonic() + 35.0
+        prompted_connect = False
+        start = time.monotonic()
+        while time.monotonic() < deadline:
+            if self._wlan0_station_ready():
+                logger.info("wlan0 connected with saved WiFi; skipping WiFi AP.")
+                return True
+            if self._ethernet_has_ipv4():
+                logger.info("Ethernet uplink present; skipping WiFi AP.")
+                return True
+            if not prompted_connect and (time.monotonic() - start) >= 10.0:
+                prompted_connect = True
+                subprocess.run(
+                    ["sudo", "nmcli", "device", "connect", AP_INTERFACE],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                )
+            time.sleep(2)
+
+        logger.info("No saved WiFi or Ethernet uplink in time; will start WiFi AP.")
+        return False
 
     def _run(self, cmd: list[str], check=True):
         if not self._is_linux:
@@ -48,6 +223,8 @@ class WifiManager:
             logger.info(f"[macOS stub] AP '{self.ap_ssid}' would be created on {AP_INTERFACE}")
             self.is_ap_active = True
             return
+
+        self._ensure_wlan0_unmanaged_for_ap()
 
         hostapd_conf = (
             f"interface={AP_INTERFACE}\n"       # WiFi interface to host the AP on
@@ -184,17 +361,7 @@ class WifiManager:
 
         # wlan0 is normally "unmanaged" so hostapd can use it for AP. For connecting to
         # home WiFi we need NM to manage it: remove the unmanage config and reload NM.
-        nm_unmanage = "/etc/NetworkManager/conf.d/10-unmanage-wlan0.conf"
-        if os.path.isfile(nm_unmanage):
-            try:
-                os.remove(nm_unmanage)
-                subprocess.run(
-                    ["sudo", "systemctl", "reload", "NetworkManager"],
-                    check=True, capture_output=True, text=True,
-                )
-                time.sleep(2)
-            except Exception as e:
-                logger.warning("Could not make wlan0 managed: %s", e)
+        self._ensure_wlan0_managed()
 
         # Give NM time to see the interface, then rescan so the target SSID is in the list
         time.sleep(1)
@@ -242,18 +409,7 @@ class WifiManager:
             logger.info(f"Connected to {ssid}")
             return True
         logger.error(f"Failed to connect to {ssid}: %s", result.stderr or result.stdout or "")
-        # Re-create unmanage config so next start_ap() can use wlan0 again
-        if not os.path.isfile(nm_unmanage):
-            try:
-                os.makedirs(os.path.dirname(nm_unmanage), exist_ok=True)
-                with open(nm_unmanage, "w") as f:
-                    f.write("[keyfile]\nunmanaged-devices=interface-name:wlan0\n")
-                subprocess.run(
-                    ["sudo", "systemctl", "reload", "NetworkManager"],
-                    check=False, capture_output=True, text=True,
-                )
-            except Exception:
-                pass
+        self._ensure_wlan0_unmanaged_for_ap()
         return False
 
     def provision_and_switch(self, wifi_ssid: str, wifi_password: str, pir_devices: list, on_connected=None, on_failed=None):

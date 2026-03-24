@@ -24,6 +24,30 @@ function normalizeApiBaseUrl(): string {
 
 const API_BASE_URL = normalizeApiBaseUrl();
 
+/**
+ * Backend URL layout (see Django `api/urls.py`):
+ * - `/api/hub/*` — provisioning (claim by serial, hub-only flows live on the device)
+ * - `/api/devices/*`, `/api/events/*` — DRF ViewSets (list/detail by id); do not use `/api/devices/claim/` etc.
+ */
+const routes = {
+  auth: {
+    register: '/api/auth/register/',
+    login: '/api/auth/login/',
+    updateProfile: '/api/auth/update_profile/',
+  },
+  hub: {
+    claim: '/api/hub/claim/',
+  },
+  devices: {
+    list: '/api/devices/',
+    detail: (id: string) => `/api/devices/${encodeURIComponent(id)}/`,
+  },
+  events: {
+    list: '/api/events/',
+    detail: (id: string) => `/api/events/${encodeURIComponent(id)}/`,
+  },
+} as const;
+
 export interface User {
   id: number;
   username: string;
@@ -54,7 +78,8 @@ export interface Device {
 
 export interface ClaimResponse {
   status: string;
-  config_push?: boolean;
+  /** Present when claiming a smart_hub; backend sends `"scheduled"` when config push is queued */
+  config_push?: string;
   device: Device;
 }
 
@@ -137,7 +162,7 @@ export async function register(
   email: string,
   password: string
 ): Promise<{ message: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.auth.register}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
@@ -146,7 +171,7 @@ export async function register(
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/login/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.auth.login}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -165,7 +190,7 @@ export async function updateProfile(
     kasa_password?: string;
   }
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/update_profile/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.auth.updateProfile}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -177,21 +202,21 @@ export async function updateProfile(
 }
 
 export async function listDevices(token: string): Promise<Device[]> {
-  const response = await fetch(`${API_BASE_URL}/api/devices/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.devices.list}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleListResponse<Device>(response);
 }
 
 export async function getDevice(token: string, id: string): Promise<Device> {
-  const response = await fetch(`${API_BASE_URL}/api/devices/${id}/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.devices.detail(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<Device>(response);
 }
 
 export async function claimDevice(token: string, serial_number: string): Promise<ClaimResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/devices/claim/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.hub.claim}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -203,21 +228,21 @@ export async function claimDevice(token: string, serial_number: string): Promise
 }
 
 export async function listEvents(token: string): Promise<Event[]> {
-  const response = await fetch(`${API_BASE_URL}/api/events/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.events.list}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleListResponse<Event>(response);
 }
 
 export async function getEvent(token: string, id: string): Promise<Event> {
-  const response = await fetch(`${API_BASE_URL}/api/events/${id}/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.events.detail(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleResponse<Event>(response);
 }
 
 export async function deleteEvent(token: string, id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/events/${id}/`, {
+  const response = await fetch(`${API_BASE_URL}${routes.events.detail(id)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });

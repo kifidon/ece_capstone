@@ -12,7 +12,7 @@ from flask import Flask, jsonify, request
 from poller import DevicePoller
 from wifi_manager import WifiManager
 from decorators import require_api_key
-from callbacks import on_wifi_connected, on_wifi_failed, apply_config
+from callbacks import on_wifi_connected, on_wifi_failed, apply_config, boot_checkin_loop
 from captive_portal import captive_portal_bp, init_captive_portal
 from camera_buffer import from_env as camera_buffer_from_env
 from api import api_bp, init_api as init_api_blueprint
@@ -89,7 +89,7 @@ hub_state = {
 }
 
 
-_on_wifi_connected = partial(on_wifi_connected, BACKEND_URL, HUB_SERIAL, hub_state)
+_on_wifi_connected = partial(on_wifi_connected, BACKEND_URL, HUB_SERIAL, hub_state, wifi)
 _on_wifi_failed = partial(on_wifi_failed, hub_state)
 
 init_captive_portal(HUB_SERIAL, hub_state, wifi, poller, _on_wifi_connected, _on_wifi_failed)
@@ -101,8 +101,9 @@ app.register_blueprint(api_bp, url_prefix="/api")
 def init():
     """
     Startup sequence:
-    1. Start WiFi AP (unless HUB_SKIP_AP=1) — captive portal for WiFi creds + PIR provisioning
-    2. Start PIR sensor listener and Kasa poller background threads
+    1. If not HUB_SKIP_AP: try saved WiFi (NM) and Ethernet before starting the AP
+    2. Start WiFi AP only if no LAN uplink (captive portal for WiFi creds + PIR provisioning)
+    3. Start PIR sensor listener and Kasa poller background threads
     When HUB_SKIP_AP=1 (e.g. Pi already on WiFi), skip AP and run API + threads only.
     """
     logger.info("=== Hub Init ===")
@@ -112,15 +113,24 @@ def init():
     if skip_ap:
         logger.info("HUB_SKIP_AP set; skipping WiFi AP (running on existing network).")
     else:
-        try:
-            wifi.start_ap()
-        except Exception as e:
-            logger.warning("Failed to start WiFi AP (hub will run on existing network): %s", e)
+        if wifi.try_existing_lan_before_ap():
+            pass
+        else:
+            try:
+                wifi.start_ap()
+            except Exception as e:
+                logger.warning("Failed to start WiFi AP (hub will run on existing network): %s", e)
 
     threading.Thread(target=poller.start_pir_listener, daemon=True).start()
     threading.Thread(target=poller.start_kasa_poller, daemon=True).start()
     if camera_buffer is not None:
         camera_buffer.start()
+
+    threading.Thread(
+        target=boot_checkin_loop,
+        args=(BACKEND_URL, HUB_SERIAL, hub_state, wifi.hub_report_ipv4),
+        daemon=True,
+    ).start()
 
 
 # --- API Routes (served after hub joins home WiFi) ---

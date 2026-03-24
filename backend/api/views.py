@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 
 from rest_framework import status
@@ -61,11 +62,13 @@ class EdgeDeviceView(ModelViewSet):
 @permission_classes([AllowAny])
 def device_register(request):
     """
-    Hub calls this on boot (after WiFi setup) with its serial number.
-    Updates the hub's IP address. If already claimed by a user, pushes config immediately.
+    Hub calls this on boot and after WiFi setup with its serial number.
+    Updates the hub's IP on every call: prefers JSON ``local_ip`` (or ``ip_address``)
+    when valid, otherwise uses the request client IP (e.g. behind a reverse proxy).
+    If already claimed by a user, pushes config immediately.
 
     POST /api/hub/register/
-    Body: { "serial_number": "..." }
+    Body: { "serial_number": "...", "local_ip": "<optional LAN IPv4/IPv6>" }
     """
     serial_number = request.data.get("serial_number")
     if not serial_number:
@@ -77,7 +80,19 @@ def device_register(request):
     if client_ip and "," in client_ip: # if the request is coming from a proxy, get the first IP address
         client_ip = client_ip.split(",")[0].strip()
 
-    device.ip_address = client_ip
+    reported = request.data.get("local_ip") or request.data.get("ip_address")
+    if isinstance(reported, str):
+        reported = reported.strip()
+    else:
+        reported = None
+    if reported:
+        try:
+            ipaddress.ip_address(reported)
+            device.ip_address = reported
+        except ValueError:
+            device.ip_address = client_ip
+    else:
+        device.ip_address = client_ip
     device.is_active = True
     device.save(update_fields=["ip_address", "is_active"])
 

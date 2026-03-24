@@ -1,38 +1,67 @@
 import logging
+import time
 
 import requests
 
 logger = logging.getLogger(__name__)
 from poller import DevicePoller
 
-def checkin_with_backend(backend_url: str, hub_serial: str, hub_state: dict):
+
+def checkin_with_backend(
+    backend_url: str,
+    hub_serial: str,
+    hub_state: dict,
+    local_ip: str | None = None,
+) -> bool:
     """
     Tell the backend this hub is online and what IP it's reachable at.
     The backend needs this so it can push config when the user claims the device.
     If the hub is already claimed, the backend pushes config immediately.
     """
-    logger.info(f"Checking in with backend at {backend_url}")
+    payload: dict = {"serial_number": hub_serial}
+    if local_ip:
+        payload["local_ip"] = local_ip.strip()
+
+    logger.info("Checking in with backend at %s (local_ip=%r)", backend_url, local_ip)
 
     try:
         resp = requests.post(
-            f"{backend_url}/api/devices/register/",
-            json={"serial_number": hub_serial},
+            f"{backend_url}/api/hub/register/",
+            json=payload,
             timeout=15,
         )
         resp.raise_for_status()
         data = resp.json()
 
         hub_state["hub_device_id"] = data.get("hub_device_id")
-        logger.info(f"Check-in complete. Status: {data.get('status')}, Hub ID: {hub_state['hub_device_id']}")
+        logger.info(
+            "Check-in complete. Status: %s, Hub ID: %s",
+            data.get("status"),
+            hub_state["hub_device_id"],
+        )
+        return True
 
     except requests.RequestException as e:
-        logger.error(f"Failed to check in with backend: {e}")
-        logger.warning("Hub will start without backend connection. Will retry after WiFi setup.")
+        logger.error("Failed to check in with backend: %s", e)
+        return False
 
 
-def on_wifi_connected(backend_url, hub_serial, hub_state):
+def boot_checkin_loop(backend_url: str, hub_serial: str, hub_state: dict, report_ipv4) -> None:
+    """On every boot: retry check-in so the backend refreshes hub IP and can push config."""
+    time.sleep(5)
+    for attempt in range(1, 6):
+        ip = report_ipv4() if callable(report_ipv4) else None
+        if checkin_with_backend(backend_url, hub_serial, hub_state, local_ip=ip):
+            logger.info("Boot check-in succeeded (attempt %s)", attempt)
+            return
+        logger.warning("Boot check-in failed (attempt %s/5); retrying in 10s...", attempt)
+        time.sleep(10)
+
+
+def on_wifi_connected(backend_url, hub_serial, hub_state, wifi_manager, *_args):
     """Called after the hub successfully connects to the user's home WiFi."""
-    checkin_with_backend(backend_url, hub_serial, hub_state)
+    ip = wifi_manager.hub_report_ipv4()
+    checkin_with_backend(backend_url, hub_serial, hub_state, local_ip=ip)
 
     hub_state["is_provisioned"] = True
     logger.info("Hub is online and checked in with backend.")
@@ -58,7 +87,7 @@ def sync_devices_with_backend(backend_url: str, hub_serial: str, hub_state: dict
 
     try:
         resp = requests.post(
-            f"{backend_url}/api/devices/sync/",
+            f"{backend_url}/api/hub/sync/",
             json={"hub_serial": hub_serial, "devices": devices},
             headers={"X-API-Key": api_key},
             timeout=15,
