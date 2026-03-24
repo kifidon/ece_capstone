@@ -269,10 +269,15 @@ def push_config_to_hub(self, device_id: str) -> None:
     f = Fernet(settings.FIELD_ENCRYPTION_KEY.encode())
     encrypted = f.encrypt(json.dumps(payload).encode()).decode()
 
+    headers = {}
+    if hub.api_key:
+        headers["X-API-Key"] = hub.api_key
+
     try:
         resp = requests.post(
             f"http://{hub.ip_address}:{HUB_PORT}/api/config",
             json={"encrypted": encrypted},
+            headers=headers,
             timeout=10,
         )
         resp.raise_for_status()
