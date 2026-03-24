@@ -75,8 +75,12 @@ class EdgeEventProcessor():
         Returns:
             Numpy Array of shape (n_frames, 17, 3) where 17 is the number of keypoints and 3 is the y, x, and confidence
         Args:
-            keypoints: {"frame_0": [[y,x,conf], ...], "frame_1": [...], ...}
+            keypoints: {"frame_0": [[y,x,conf], ...], "frame_1": [...], ...} — only this shape is supported.
         """
+        if not isinstance(keypoints, dict) or not keypoints:
+            raise ValueError(
+                "keypoints must be a non-empty dict with frame_* keys, e.g. {'frame_0': [...], 'frame_1': [...]}"
+            )
         sorted_frames = sorted(keypoints.keys(), key=lambda x: int(x.split("_")[1]))
         output = []
         LEFT_HIP_IDX = 11

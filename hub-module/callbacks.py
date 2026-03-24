@@ -95,6 +95,7 @@ def checkin_with_backend(
         data = resp.json()
 
         hub_state["hub_device_id"] = data.get("hub_device_id")
+        hub_state["api_key"] = data.get("api_key")  # Store API key from check-in response
         logger.info(
             "Check-in complete. Status: %s, Hub ID: %s",
             data.get("status"),

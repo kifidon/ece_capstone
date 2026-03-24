@@ -152,12 +152,13 @@ def device_register(request):
     device.save(update_fields=["ip_address", "is_active"])
 
     if device.user:
-        # Hub now pulls config on its own after check-in; no push needed
-        logger.info(f"Hub {device.serial_number} is claimed. Hub will pull config on check-in.")
+        # Hub now pulls config on its own after check-in; provide API key in response
+        logger.info(f"Hub {device.serial_number} is claimed. Returning API key for config pull.")
         return JsonResponse({
             "status": "claimed",
             "hub_device_id": str(device.id),
-            "message": "Hub is claimed. Config will be pulled by hub on next check-in.",
+            "api_key": device.api_key,
+            "message": "Hub is claimed. Use api_key to pull config on next cycle.",
         })
 
     return JsonResponse({
