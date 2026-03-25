@@ -90,12 +90,9 @@ async def motion_detected():
         f"frame_{i}": kp.tolist() for i, kp in enumerate(keypoints_list)
     }
 
-    logger.info("Polling smart plug status")
+    logger.info("Collecting device state from poller cache")
     smart_plugs = _poller.get_devices("smart_plug")
-    smart_plug_json = []
-    if _poller is not None and smart_plugs:
-        for device in smart_plugs:
-            smart_plug_json.append(_poller.get_device_status(device))
+    smart_plug_json = [d.to_registration_payload() for d in smart_plugs]
     logger.info("Building payload")
     trigger = dict(data)
     trigger.pop("bypass_discovered_check", None)
