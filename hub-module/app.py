@@ -139,6 +139,7 @@ def init():
     threading.Thread(
         target=boot_checkin_loop,
         args=(BACKEND_URL, HUB_SERIAL, hub_state, wifi.hub_report_ipv4),
+        kwargs={"poller": poller},
         daemon=True,
     ).start()
 

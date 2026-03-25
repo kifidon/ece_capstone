@@ -7,13 +7,14 @@ import { clearAuthStorageAndRedirectToLogin } from './auth-storage';
  * to the local backend in development only.
  */
 function normalizeApiBaseUrl(): string {
-  let raw = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim();
+  let raw = '';
+  try {
+    raw = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').trim();
+  } catch {
+    raw = '';
+  }
   if (!raw) {
-    if (process.env.NODE_ENV === 'development') {
-      raw = 'http://127.0.0.1:8000';
-    } else {
-      return '';
-    }
+    raw = 'http://127.0.0.1:8000';
   }
   raw = raw.replace(/\/+$/, '');
   if (!/^https?:\/\//i.test(raw)) {
