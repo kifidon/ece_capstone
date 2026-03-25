@@ -123,6 +123,11 @@ def boot_checkin_loop(backend_url: str, hub_serial: str, hub_state: dict, report
             logger.info("Boot check-in succeeded (attempt %s)", attempt)
             if pull_config_from_backend(backend_url, hub_serial, hub_state, poller=poller):
                 logger.info("Config pulled from backend")
+                # Immediate Kasa discovery + sync on boot
+                if poller and poller.kasa_credentials:
+                    logger.info("Running initial Kasa discovery...")
+                    poller.run_kasa_discovery_once()
+                    sync_devices_with_backend(backend_url, hub_serial, hub_state, poller)
             else:
                 logger.warning("Failed to pull config; will retry on next sync")
             return

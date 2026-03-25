@@ -193,6 +193,19 @@ class DevicePoller:
             sock.close()
 
     # --- Kasa smart plug discovery (polls periodically) ---
+    def run_kasa_discovery_once(self):
+        """Run a single Kasa discovery cycle (blocking). Used for immediate discovery on boot."""
+        if self.kasa_credentials is None:
+            logger.warning("Cannot run Kasa discovery: no credentials set.")
+            return
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(self._discover_kasa_devices())
+        except Exception as e:
+            logger.error(f"Kasa discovery error (one-shot): {e}")
+        finally:
+            loop.close()
+
     def start_kasa_poller(self):
         """Poll for Kasa smart plugs periodically. Runs forever in a background thread."""
         loop = asyncio.new_event_loop()
