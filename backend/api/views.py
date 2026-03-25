@@ -31,9 +31,6 @@ class EdgeEventView(ModelViewSet):
     def get_queryset(self):
         qs = EdgeEvent.objects.filter(is_deleted=False).order_by('-timestamp')
         if self.request.user.is_authenticated:
-            # Events may reference the smart_hub or a peripheral. Peripherals sometimes have
-            # user=NULL while the parent hub is claimed; include any device we own or that
-            # hangs off our hub so those events still list correctly.
             user = self.request.user
             device_ids = EdgeDevice.objects.filter(
                 Q(user=user) | Q(hub_device__user=user)

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { listEvents, deleteEvent, type Event, ApiError } from '@/lib/api';
+import { listEvents, deleteEvent, resolveEvent, type Event, ApiError } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertReasoningPanel,
   DeviceStateSection,
@@ -43,8 +44,8 @@ import {
   CheckCircle,
   Clock,
   Filter,
-  Trash2,
   Activity,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -56,16 +57,22 @@ function isUnresolvedAlert(event: Event): boolean {
   return event.is_alert && !event.is_resolved;
 }
 
+function minutesUntilNextHour(): number {
+  return 60 - new Date().getMinutes();
+}
+
 function EventDetailDialog({
   event,
   open,
   onOpenChange,
   onDelete,
+  onResolve,
 }: {
   event: Event | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDelete: (id: string) => void;
+  onResolve: (id: string) => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -113,28 +120,27 @@ function EventDetailDialog({
 
           {/* Status */}
           <div className="flex flex-wrap gap-2">
-            {event.is_alert ? (
-              <Badge variant={event.is_resolved ? 'default' : 'secondary'}>
-                {event.is_resolved ? (
-                  <>
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Resolved
-                  </>
-                ) : (
-                  <>
-                    <Clock className="h-3 w-3 mr-1" />
-                    Unresolved
-                  </>
-                )}
+            {!event.is_processed ? (
+              <Badge variant="outline" className="text-muted-foreground font-normal">
+                <Clock className="h-3 w-3 mr-1" />
+                Processing in ~{minutesUntilNextHour()}m
+              </Badge>
+            ) : !event.is_alert ? (
+              <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Normal Activity
+              </Badge>
+            ) : event.is_resolved ? (
+              <Badge className="bg-primary/20 text-primary border-primary/30">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Resolved
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-muted-foreground font-normal">
-                Not an alert
+              <Badge variant="destructive">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Alert
               </Badge>
             )}
-            <Badge variant={event.is_processed ? 'default' : 'secondary'}>
-              {event.is_processed ? 'Processed' : 'Pending'}
-            </Badge>
           </div>
 
           <DeviceStateSection deviceState={event.device_state} />
@@ -145,13 +151,30 @@ function EventDetailDialog({
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            {event.is_alert && !event.is_resolved && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={() => { onResolve(event.id); onOpenChange(false); }}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Not an issue
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs text-center">
+                    <p>Mark this alert as safe. This helps improve future alert detection.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             <Button
               variant="destructive"
               onClick={handleDelete}
               disabled={isDeleting}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete Event
+              Delete
             </Button>
           </div>
         </div>
@@ -233,7 +256,6 @@ function EventsPageInner() {
 
   const handleDeleteEvent = async (id: string) => {
     if (!token) return;
-
     try {
       await deleteEvent(token, id);
       setEvents((prev) => prev.filter((e) => e.id !== id));
@@ -243,6 +265,21 @@ function EventsPageInner() {
         toast.error('Failed to delete event', { description: err.message });
       } else {
         toast.error('Failed to delete event');
+      }
+    }
+  };
+
+  const handleResolveEvent = async (id: string) => {
+    if (!token) return;
+    try {
+      const updated = await resolveEvent(token, id);
+      setEvents((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      toast.success('Alert marked as not an issue');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error('Failed to resolve event', { description: err.message });
+      } else {
+        toast.error('Failed to resolve event');
       }
     }
   };
@@ -463,32 +500,63 @@ function EventsPageInner() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      {!event.is_alert ? (
-                        <span className="text-sm text-muted-foreground">—</span>
+                      {!event.is_processed ? (
+                        <Badge variant="outline" className="text-muted-foreground font-normal">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Processing in ~{minutesUntilNextHour()}m
+                        </Badge>
+                      ) : !event.is_alert ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Normal Activity
+                        </Badge>
                       ) : event.is_resolved ? (
                         <Badge className="bg-primary/20 text-primary border-primary/30">
                           <CheckCircle className="h-3 w-3 mr-1" />
                           Resolved
                         </Badge>
                       ) : (
-                        <Badge variant="secondary">
-                          <Clock className="h-3 w-3 mr-1" />
-                          Unresolved
+                        <Badge variant="destructive">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Alert
                         </Badge>
                       )}
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteEvent(event.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      {event.is_alert && !event.is_resolved && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleResolveEvent(event.id);
+                                }}
+                              >
+                                <CheckCircle className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs text-center">
+                              <p>Mark as safe — helps improve future alerts</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteEvent(event.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -502,6 +570,7 @@ function EventsPageInner() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onDelete={handleDeleteEvent}
+        onResolve={handleResolveEvent}
       />
     </div>
   );

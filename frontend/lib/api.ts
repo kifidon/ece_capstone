@@ -74,7 +74,6 @@ export interface Device {
   is_active: boolean;
   location: string | null;
   special_use: string | null;
-  ip_address: string | null;
   is_provisioned: boolean;
 }
 
@@ -223,6 +222,22 @@ export async function getDevice(token: string, id: string): Promise<Device> {
   return handleResponse<Device>(response);
 }
 
+export async function updateDevice(
+  token: string,
+  id: string,
+  data: Partial<Pick<Device, 'location' | 'special_use'>>,
+): Promise<Device> {
+  const response = await fetch(`${API_BASE_URL}${routes.devices.detail(id)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<Device>(response);
+}
+
 export async function claimDevice(token: string, serial_number: string): Promise<ClaimResponse> {
   const response = await fetch(`${API_BASE_URL}${routes.hub.claim}`, {
     method: 'POST',
@@ -260,6 +275,18 @@ export async function deleteEvent(token: string, id: string): Promise<void> {
     }
     throw new ApiError('Failed to delete event', response.status, null);
   }
+}
+
+export async function resolveEvent(token: string, id: string): Promise<Event> {
+  const response = await fetch(`${API_BASE_URL}${routes.events.detail(id)}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ is_resolved: true }),
+  });
+  return handleResponse<Event>(response);
 }
 
 export { ApiError };

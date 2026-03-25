@@ -5,7 +5,15 @@ from .models import EdgeDevice, EdgeEvent
 class EdgeDeviceSerializer(serializers.ModelSerializer):
     class Meta:
         model = EdgeDevice
-        fields = '__all__'
+        fields = [
+            'id', 'device_type', 'serial_number', 'battery_level',
+            'is_active', 'location', 'special_use',
+            'is_provisioned', 'hub_device', 'user',
+        ]
+        read_only_fields = [
+            'id', 'device_type', 'serial_number', 'battery_level',
+            'is_active', 'is_provisioned', 'hub_device', 'user',
+        ]
 
 
 class EdgeEventSerializer(serializers.ModelSerializer):

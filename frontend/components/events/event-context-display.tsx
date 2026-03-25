@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import type { Event } from '@/lib/api';
-import { AlertTriangle, Bot, Lightbulb, Plug, Radio, ScanLine } from 'lucide-react';
+import { AlertTriangle, Bot, Plug, Radio, ScanLine } from 'lucide-react';
 
 function asDeviceRecords(raw: unknown): Record<string, unknown>[] {
   if (Array.isArray(raw)) {
@@ -67,38 +67,45 @@ const SKIP_KEYS = new Set([
   'battery_level',
   'special_use',
   'sensed',
+  'last_seen',
 ]);
 
 export function AlertReasoningPanel({ event }: { event: Event }) {
-  if (!event.is_alert) return null;
+  if (!event.is_processed) return null;
 
   const reasoning = event.alert_reasoning?.trim();
+  if (!reasoning) return null;
+
+  const isAlert = event.is_alert;
 
   return (
-    <Card className="border-amber-500/40 bg-linear-to-br from-amber-500/5 via-card to-card shadow-sm">
+    <Card
+      className={
+        isAlert
+          ? 'border-amber-500/40 bg-linear-to-br from-amber-500/5 via-card to-card shadow-sm'
+          : 'border-emerald-500/40 bg-linear-to-br from-emerald-500/5 via-card to-card shadow-sm'
+      }
+    >
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2 text-foreground">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
-            <Bot className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+          <span
+            className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+              isAlert ? 'bg-amber-500/15' : 'bg-emerald-500/15'
+            }`}
+          >
+            <Bot
+              className={`h-4 w-4 ${
+                isAlert
+                  ? 'text-amber-700 dark:text-amber-400'
+                  : 'text-emerald-700 dark:text-emerald-400'
+              }`}
+            />
           </span>
-          Why this is an alert
+          {isAlert ? 'Why this was flagged' : 'Why this is normal'}
         </CardTitle>
-        <p className="text-xs text-muted-foreground font-normal">
-          Explanation from the anomaly detection model (Gemini).
-        </p>
       </CardHeader>
       <CardContent>
-        {reasoning ? (
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{reasoning}</p>
-        ) : (
-          <div className="flex gap-2 text-sm text-muted-foreground">
-            <Lightbulb className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>
-              No AI explanation stored yet. It appears after the scheduled post-process job runs, or
-              if this alert was created manually.
-            </span>
-          </div>
-        )}
+        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{reasoning}</p>
       </CardContent>
     </Card>
   );
@@ -139,9 +146,6 @@ export function DeviceStateSection({ deviceState }: { deviceState: unknown }) {
                       <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
                         {dtype.replace(/_/g, ' ')}
                       </Badge>
-                      <code className="text-[11px] text-muted-foreground truncate max-w-full">
-                        {serial}
-                      </code>
                     </div>
                   </div>
                 </div>
@@ -149,6 +153,7 @@ export function DeviceStateSection({ deviceState }: { deviceState: unknown }) {
               <CardContent className="pt-0 px-4 pb-3">
                 <DeviceFieldRow label="Power on" value={dev.is_on} />
                 <DeviceFieldRow label="Battery" value={dev.battery_level != null ? `${dev.battery_level}%` : undefined} />
+                <DeviceFieldRow label="Last seen" value={formatTriggerTimestamp(dev.last_seen)} />
                 <DeviceFieldRow label="Special use" value={dev.special_use} />
                 <DeviceFieldRow label="Motion sensed" value={dev.sensed} />
                 {Object.entries(dev).map(([k, v]) => {
@@ -207,11 +212,6 @@ export function TriggerDeviceSection({
                     {dtype.replace(/_/g, ' ')}
                   </Badge>
                 )}
-                {serial && (
-                  <code className="text-sm font-mono bg-background/80 px-2 py-0.5 rounded border border-border">
-                    {serial}
-                  </code>
-                )}
               </div>
               <Separator />
               <div className="space-y-0">
@@ -227,15 +227,6 @@ export function TriggerDeviceSection({
                   return <DeviceFieldRow key={k} label={formatLabel(k)} value={v} />;
                 })}
               </div>
-              {serial && !inSyncList && (
-                <div className="flex gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-950 dark:text-amber-100">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                  <span>
-                    This serial is not in the synced device list above. It may be a new sensor, a
-                    sync delay, or a different hub snapshot than when the event was recorded.
-                  </span>
-                </div>
-              )}
             </div>
           </div>
         </CardContent>

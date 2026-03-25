@@ -50,15 +50,17 @@ def get_ml_model():
         return _ml_model
 
 
-class AnomalyResult(BaseModel):
-    event_id: str = Field(description="The event ID that is an anomaly")
-    alert_reasoning: str = Field(description="Reasoning for why it is anomalous. Keep under 100 words.")
+class EventClassification(BaseModel):
+    event_id: str = Field(description="The event ID being classified")
+    is_anomaly: bool = Field(description="True if the event is anomalous, false if it is normal")
+    reasoning: str = Field(description="Brief reasoning (under 100 words) for why this event is or is not anomalous")
 
 
 class AnomalyDetectionResponse(BaseModel):
-    # Only include events you decide are anomalous.
-    # If there are no anomalies, results should be an empty list.
-    results: list[AnomalyResult] = Field(default_factory=list, description="List of anomalous events.")
+    results: list[EventClassification] = Field(
+        default_factory=list,
+        description="One entry per new event with classification and reasoning.",
+    )
 
 class EdgeEventProcessor():
 
@@ -171,12 +173,29 @@ class EdgeEventProcessor():
         safe_new_events = [{k: to_jsonable(v) for k, v in row.items()} for row in (new_events or [])]
         
         prompt = (
-            "You are an anomaly detection model. "
-            "You are given a list of historical baseline events for a user and one or more new events. "
-            "Determine whether each new event is anomalous compared to the baseline. "
-            "An anomalous event deviates significantly in timing, duration, or frequency from the historic trend.\n\n"
-            "Return ONLY JSON that matches the schema.\n"
-            "IMPORTANT: Only include events you are marking as anomalies in the results array.\n\n"
+            "You are an anomaly detection model. Your task is to detect true anomalies (alerts) in users' event data based on historical patterns.\n\n"
+            "Definition of an anomaly (alert):\n"
+            "- An event is only anomalous if it clearly deviates from an identifiable, consistent pattern or routine present in the user's historical baseline.\n"
+            "- Consider meaningful patterns in the user's event history: timing, frequency, duration, sequence, or any predictable regularity.\n"
+            "- Only mark an event as an anomaly if there is strong evidence that a pattern exists in the baseline and the new event disrupts that pattern in a significant way.\n"
+            "- DO NOT mark events as anomalies if the historical events show no recognizable or strong patterns; if behavior is already highly variable or random, new events should not be flagged as alerts simply for being unusual.\n"
+            "- Examples of valid anomalies: events occurring at a time of day never seen before, far higher/lower frequency than baseline, abnormal duration, or clear outliers in established routines.\n"
+            "- Examples of non-anomalies: sporadic or random baseline, lack of clear trend in historical data, natural variability with no discernible pattern.\n\n"
+            "User feedback fields in the data:\n"
+            "- is_alert: whether a past event was flagged as an anomaly.\n"
+            "- is_resolved: whether the user explicitly marked a past alert as 'not an issue'. "
+            "A resolved event means the user reviewed it and confirmed it is NORMAL expected behavior for them. "
+            "Treat resolved events as strong positive examples of the user's baseline routine. "
+            "Events that are similar in action, pose, and timing to resolved events should have a much higher threshold before being flagged as anomalous — "
+            "the user has told you this type of activity is acceptable. "
+            "Conversely, unresolved alerts (is_alert=true, is_resolved=false) represent patterns the user considers genuinely concerning.\n\n"
+            "You are given:\n"
+            "  - A list of historical baseline events for a user (includes is_alert and is_resolved feedback).\n"
+            "  - One or more new events to assess.\n\n"
+            "Return ONLY JSON matching the schema. DO NOT include explanation or notes.\n"
+            "IMPORTANT: Return exactly one entry in the 'results' array for EVERY new event. "
+            "Set is_anomaly to true only for events you are confident are anomalous. "
+            "For every event (anomalous or not), provide brief reasoning explaining your decision.\n\n"
             f"Historic events (JSON): {json.dumps(safe_historic, ensure_ascii=False)}\n\n"
             f"New events (JSON): {json.dumps(safe_new_events, ensure_ascii=False)}"
         )
@@ -209,39 +228,48 @@ class EdgeEventProcessor():
         users = CustomUser.objects.all()
         for user in users:
             base = _edge_events_for_user(user)
+            event_fields = (
+                "id", "timestamp", "action", "pose_classification",
+                "is_alert", "is_resolved",
+            )
             historic_events = list(
                 base.filter(
                     is_processed=True,
                     timestamp__gte=timezone.now() - timezone.timedelta(days=7),
-                ).values("id", "timestamp", "action", "pose_classification")
+                ).values(*event_fields)
             )
             events_to_process = list(
-                base.filter(is_processed=False).values(
-                    "id", "timestamp", "action", "pose_classification"
-                )
+                base.filter(is_processed=False).values(*event_fields)
             )
 
-            anomalies = self._detect_anomalies(historic_events, events_to_process)
+            classifications = self._detect_anomalies(historic_events, events_to_process)
             event_ids = [event["id"] for event in events_to_process]
             if not event_ids:
                 continue
 
-            EdgeEvent.objects.filter(id__in=event_ids).update(
-                is_processed=True,
-            )
-
             updates = []
-            for anomaly in anomalies.get("results", []):
+            for result in classifications.get("results", []):
                 updates.append(
                     EdgeEvent(
-                        id=anomaly["event_id"],
-                        is_alert=True,
-                        alert_reasoning=anomaly["alert_reasoning"]
+                        id=result["event_id"],
+                        is_processed=True,
+                        is_alert=result.get("is_anomaly", False),
+                        alert_reasoning=result.get("reasoning", ""),
                     )
                 )
+
+            classified_ids = {u.id for u in updates}  # type: ignore[attr-defined]
+            unclassified_ids = [eid for eid in event_ids if eid not in classified_ids]
+            if unclassified_ids:
+                EdgeEvent.objects.filter(id__in=unclassified_ids).update(is_processed=True)
+
             if updates:
-                EdgeEvent.objects.bulk_update(updates, ["is_alert", "alert_reasoning"])
-                logger.info(f"Updated {len(updates)} events for user {user.id}")
+                EdgeEvent.objects.bulk_update(updates, ["is_processed", "is_alert", "alert_reasoning"])
+                alert_count = sum(1 for u in updates if u.is_alert)
+                logger.info(
+                    "Processed %d events for user %s (%d alerts, %d normal)",
+                    len(updates), user.id, alert_count, len(updates) - alert_count,
+                )
 
 HUB_PORT = 5050
 
