@@ -16,7 +16,7 @@ class MLProcessor():
     MLProcessor for the model specified in the models.yml file.
     """
 
-    def __init__(self, model_name: str = "minimal"):
+    def __init__(self, model_name: str = "mixup_08"):
         """
         Initialize the MLProcessor for the model specified in the models.yml file.
         """

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit, LeaveOneGroupOut
 from sklearn.preprocessing import LabelEncoder
 from tensorflow import keras
 
@@ -20,6 +20,55 @@ LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 logger = logging.getLogger(__name__)
+
+# Default grid for `--mixup-sweep`: α=0 is baseline (no mixup); λ ~ Beta(α,α) for α>0.
+DEFAULT_MIXUP_SWEEP_ALPHAS = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+
+class MixupSequence(keras.utils.Sequence):
+    """Batches of (X, one-hot y) with Mixup: λ ~ Beta(alpha, alpha), same as Zhang et al."""
+
+    def __init__(
+        self,
+        X: np.ndarray,
+        y_int: np.ndarray,
+        num_classes: int,
+        batch_size: int,
+        mixup_alpha: float,
+        shuffle: bool = True,
+    ) -> None:
+        self.X = np.asarray(X, dtype=np.float32)
+        self.y_int = np.asarray(y_int)
+        self.num_classes = num_classes
+        self.batch_size = batch_size
+        self.mixup_alpha = float(mixup_alpha)
+        self.shuffle = shuffle
+        self._y_onehot = keras.utils.to_categorical(self.y_int, num_classes).astype(np.float32)
+        self._indices = np.arange(len(self.X))
+        if self.shuffle:
+            np.random.shuffle(self._indices)
+
+    def __len__(self) -> int:
+        return int(np.ceil(len(self.X) / self.batch_size))
+
+    def on_epoch_end(self) -> None:
+        if self.shuffle:
+            np.random.shuffle(self._indices)
+
+    def __getitem__(self, idx: int) -> tuple[np.ndarray, np.ndarray]:
+        start = idx * self.batch_size
+        end = min(start + self.batch_size, len(self.X))
+        rows = self._indices[start:end]
+        bx = self.X[rows].copy()
+        by = self._y_onehot[rows]
+        if self.mixup_alpha > 0:
+            lam = np.random.beta(
+                self.mixup_alpha, self.mixup_alpha, size=(len(bx), 1)
+            ).astype(np.float32)
+            j = np.random.permutation(len(bx))
+            bx = lam * bx + (1.0 - lam) * bx[j]
+            by = lam * by + (1.0 - lam) * by[j]
+        return bx, by
 
 
 def setup_logging(log_dir: str) -> None:
@@ -101,13 +150,19 @@ def train(
     epochs: int = 50,
     batch_size: int = 32,
     hidden_layers: tuple[int, int, int] = (128, 64, 32),
-    dropout: float = 0.4,
+    dropout: float = 0.2,
     noise_std: float = 0.01,
     augment_factor: int = 2,
     random_state: int = 42,
-) -> None:
+    mixup_alpha: float | None = None,
+    single_split: bool = False,
+    val_fraction: float = 0.2,
+) -> dict | None:
     """
-    Cross-validation by video with data augmentation.
+    Cross-validation by video with data augmentation, or a single train/val split.
+
+    When single_split is True: one random split by video (GroupShuffleSplit),
+    val_fraction of videos go to validation (default 20%).
 
     When n_folds is None or equals the number of unique videos, uses
     Leave-One-Video-Out (LOVO). Otherwise uses GroupKFold with the
@@ -119,7 +174,7 @@ def train(
     Args:
         csv_path: Path to combined pose CSV.
         checkpoint_dir: Directory for model checkpoints.
-        n_folds: Number of CV folds. None = LOVO (one fold per video).
+        n_folds: Number of CV folds. None = LOVO (one fold per video). Ignored if single_split.
         epochs: Max epochs per fold.
         batch_size: Batch size.
         hidden_layers: MLP hidden layer units.
@@ -127,10 +182,19 @@ def train(
         noise_std: Std dev of Gaussian noise added to y,x during augmentation.
         augment_factor: How many augmented copies to add (on top of original).
         random_state: Random seed.
+        mixup_alpha: If set and > 0, apply Mixup on training batches with
+            λ ~ Beta(mixup_alpha, mixup_alpha). Validation is never mixed.
+        single_split: If True, train once with one train/val split by video.
+        val_fraction: Fraction of videos in validation when single_split is True.
     """
     setup_logging(checkpoint_dir)
     os.makedirs(checkpoint_dir, exist_ok=True)
     np.random.seed(random_state)
+    use_mixup = mixup_alpha is not None and mixup_alpha > 0
+    if use_mixup:
+        logger.info("Mixup enabled: λ ~ Beta(%.4f, %.4f)", mixup_alpha, mixup_alpha)
+    else:
+        logger.info("Mixup disabled (use --mixup-alpha > 0 or sweep with non-zero alphas)")
 
     df = load_pose_csv(csv_path)
     if df.empty:
@@ -153,13 +217,25 @@ def train(
     unique_videos = sorted(set(video_ids))
     n_videos = len(unique_videos)
 
-    if n_folds is None or n_folds >= n_videos:
+    if single_split:
+        if not (0.0 < val_fraction < 1.0):
+            raise ValueError("val_fraction must be between 0 and 1 (exclusive).")
+        gss = GroupShuffleSplit(
+            n_splits=1, test_size=val_fraction, random_state=random_state
+        )
+        splits = list(gss.split(X_all, y_enc, groups=video_ids))
+        n_folds = 1
+        cv_name = f"single-split ({100 * (1 - val_fraction):.0f}% train / {100 * val_fraction:.0f}% val by video)"
+        logger.info("Single train/val split by video — %s", cv_name)
+    elif n_folds is None or n_folds >= n_videos:
         splitter = LeaveOneGroupOut()
+        splits = list(splitter.split(X_all, y_enc, groups=video_ids))
         n_folds = n_videos
         cv_name = "LOVO"
         logger.info("Using Leave-One-Video-Out (%d folds)", n_folds)
     else:
         splitter = GroupKFold(n_splits=n_folds)
+        splits = list(splitter.split(X_all, y_enc, groups=video_ids))
         cv_name = f"{n_folds}-Fold"
         logger.info("Using GroupKFold with %d folds", n_folds)
 
@@ -167,7 +243,7 @@ def train(
     all_true_labels = np.full(len(X_all), -1, dtype=int)
     all_pred_probs = np.zeros((len(X_all), num_classes), dtype=np.float32)
 
-    for fold, (train_idx, val_idx) in enumerate(splitter.split(X_all, y_enc, groups=video_ids), 1):
+    for fold, (train_idx, val_idx) in enumerate(splits, 1):
         val_videos = sorted(set(video_ids[val_idx]))
         val_label = val_videos[0] if len(val_videos) == 1 else f"{len(val_videos)} videos"
         logger.info("=== Fold %d/%d — held-out: %s ===", fold, n_folds, val_label)
@@ -181,7 +257,6 @@ def train(
 
         X_train_aug, y_train_aug = _build_augmented_data(X_train, y_train, augment_factor, noise_std)
 
-        y_train_cat = keras.utils.to_categorical(y_train_aug, num_classes)
         y_val_cat = keras.utils.to_categorical(y_val, num_classes)
 
         model = build_mlp(
@@ -200,16 +275,33 @@ def train(
             ),
         ]
 
-        model.fit(
-            X_train_aug, y_train_cat,
-            validation_data=(X_val, y_val_cat),
-            epochs=epochs, batch_size=batch_size,
-            callbacks=callbacks, verbose=1,
-        )
+        if use_mixup:
+            train_seq = MixupSequence(
+                X_train_aug, y_train_aug, num_classes, batch_size, mixup_alpha
+            )
+            model.fit(
+                train_seq,
+                validation_data=(X_val, y_val_cat),
+                epochs=epochs,
+                callbacks=callbacks,
+                verbose=1,
+            )
+        else:
+            y_train_cat = keras.utils.to_categorical(y_train_aug, num_classes)
+            model.fit(
+                X_train_aug, y_train_cat,
+                validation_data=(X_val, y_val_cat),
+                epochs=epochs, batch_size=batch_size,
+                callbacks=callbacks, verbose=1,
+            )
 
         val_preds = model.predict(X_val, verbose=0)
         all_true_labels[val_idx] = y_val
         all_pred_probs[val_idx] = val_preds
+        if single_split:
+            train_preds = model.predict(X_train, verbose=0)
+            all_true_labels[train_idx] = y_train
+            all_pred_probs[train_idx] = train_preds
 
         val_loss, val_acc = model.evaluate(X_val, y_val_cat, verbose=0)
         fold_results.append({
@@ -229,14 +321,16 @@ def train(
     logger.info("  Mean: %.4f, Std: %.4f", np.mean(accs), np.std(accs))
 
     results_path = Path(checkpoint_dir) / "cv_results.json"
+    summary = {
+        "cv_method": cv_name,
+        "n_folds": n_folds,
+        "mixup_alpha": mixup_alpha,
+        "folds": fold_results,
+        "mean_accuracy": float(np.mean(accs)),
+        "std_accuracy": float(np.std(accs)),
+    }
     with open(results_path, "w") as f:
-        json.dump({
-            "cv_method": cv_name,
-            "n_folds": n_folds,
-            "folds": fold_results,
-            "mean_accuracy": float(np.mean(accs)),
-            "std_accuracy": float(np.std(accs)),
-        }, f, indent=2)
+        json.dump(summary, f, indent=2)
     logger.info("Saved CV results to %s", results_path)
 
     predictions_path = Path(checkpoint_dir) / "cv_predictions.npz"
@@ -251,7 +345,6 @@ def train(
 
     logger.info("=== Training final model on all data ===")
     X_final, y_final = _build_augmented_data(X_all, y_enc, augment_factor, noise_std)
-    y_final_cat = keras.utils.to_categorical(y_final, num_classes)
 
     final_model = build_mlp(
         input_dim=X_all.shape[1],
@@ -260,8 +353,17 @@ def train(
         dropout=dropout,
     )
     final_model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
-    final_model.fit(X_final, y_final_cat, epochs=epochs, batch_size=batch_size, verbose=1)
+    if use_mixup:
+        final_seq = MixupSequence(
+            X_final, y_final, num_classes, batch_size, mixup_alpha
+        )
+        final_model.fit(final_seq, epochs=epochs, verbose=1)
+    else:
+        y_final_cat = keras.utils.to_categorical(y_final, num_classes)
+        final_model.fit(X_final, y_final_cat, epochs=epochs, batch_size=batch_size, verbose=1)
 
     model_path = Path(checkpoint_dir) / "best_model.keras"
     final_model.save(model_path)
     logger.info("Saved final model to %s", model_path)
+
+    return summary

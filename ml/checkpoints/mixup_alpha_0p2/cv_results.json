@@ -1,0 +1,66 @@
+{
+  "cv_method": "3-Fold",
+  "n_folds": 3,
+  "mixup_alpha": 0.2,
+  "folds": [
+    {
+      "fold": 1,
+      "val_videos": [
+        "Lying01.mp4",
+        "Lying05.mp4",
+        "Reaching01dupe.mp4",
+        "Reaching02dupe.mp4",
+        "Reaching04.2.mp4",
+        "Reaching05.mp4",
+        "Sitting02.mp4",
+        "Sitting02dupe.mp4",
+        "Sitting03.mp4",
+        "SittingV2-2.mp4",
+        "Standing05.mp4",
+        "StandingV2.mp4"
+      ],
+      "val_accuracy": 0.7070818543434143,
+      "val_loss": 1.3974592685699463
+    },
+    {
+      "fold": 2,
+      "val_videos": [
+        "Lying01dupe.mp4",
+        "Lying02.mp4",
+        "LyingV2.mp4",
+        "Reaching01.mp4",
+        "Reaching02.mp4",
+        "Reaching03.mp4",
+        "Reaching03dupe.mp4",
+        "Sitting01.mp4",
+        "Sitting04.mp4",
+        "SittingV2-3.mp4",
+        "Standing02dupe.mp4",
+        "Standing04.mp4",
+        "Standing04dupe.mp4"
+      ],
+      "val_accuracy": 0.671987771987915,
+      "val_loss": 0.812903881072998
+    },
+    {
+      "fold": 3,
+      "val_videos": [
+        "Lying02dupe.mp4",
+        "Lying03.mp4",
+        "Lying04.mp4",
+        "Reaching04.1.mp4",
+        "ReachingV2.mp4",
+        "Sitting04dupe.mp4",
+        "Sitting05.mp4",
+        "SittingV2.mp4",
+        "Standing01.mp4",
+        "Standing02.mp4",
+        "Standing03.mp4"
+      ],
+      "val_accuracy": 0.773139238357544,
+      "val_loss": 0.8050805926322937
+    }
+  ],
+  "mean_accuracy": 0.7174029548962911,
+  "std_accuracy": 0.04193485920367832
+}

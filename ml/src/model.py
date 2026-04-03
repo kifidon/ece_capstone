@@ -19,7 +19,7 @@ def build_mlp(
         input_dim: Number of input features (51 for 17 keypoints × 3: y, x, confidence).
         hidden_layers: Units per hidden layer (default 128, 64, 32).
         num_classes: Number of pose classes.
-        dropout: Dropout rate between layers.
+        dropout: Dropout rate after each hidden block (default 0.2).
 
     Returns:
         Compiled Keras Model.

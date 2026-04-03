@@ -16,18 +16,25 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_CLIPS_DIR = os.path.join(PROJECT_ROOT, "data", "Raw_Clips")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "outputs")
 
+# Longest first so names like "ReachingV2" match "Reaching", not a shorter prefix.
+POSE_CLASS_PREFIXES = ("Reaching", "Standing", "Sitting", "Lying")
+VIDEO_EXTENSIONS = (".mp4")
+
 
 def get_class(filename: str) -> str:
-    """Extract class name from video filename (e.g. 'Sitting04dupe.mp4' -> 'Sitting')."""
-    base = filename.replace(".mp4", "")
-    return re.sub(r"[\d.]+.*$", "", base)
+    """Map filename stem to pose class (e.g. LyingV2.mov -> Lying, Sitting04dupe.mp4 -> Sitting)."""
+    stem = os.path.splitext(filename)[0]
+    for prefix in POSE_CLASS_PREFIXES:
+        if stem.startswith(prefix):
+            return prefix
+    return re.sub(r"[\d.]+.*$", "", stem)
 
 
 def count_frames(video_dir: str) -> dict[str, int]:
-    """Return {filename: frame_count} for every .mp4 in video_dir."""
+    """Return {filename: frame_count} for every video in video_dir."""
     counts = {}
     for f in sorted(os.listdir(video_dir)):
-        if not f.endswith(".mp4"):
+        if not f.lower().endswith(VIDEO_EXTENSIONS):
             continue
         cap = cv2.VideoCapture(os.path.join(video_dir, f))
         counts[f] = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

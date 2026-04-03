@@ -3,12 +3,28 @@ import io
 import json
 import logging
 import os
+import ssl
 import sys
 
+import certifi
 import numpy as np
 import cv2
+
+# TF Hub creates HTTPS resolvers at import time using ssl.create_default_context().
+# macOS python.org builds often lack a working CA store; certifi fixes downloads.
+_orig_create_default_context = ssl.create_default_context
+
+def _create_default_context(purpose=ssl.Purpose.SERVER_AUTH, *, cafile=None, capath=None, cadata=None):
+    if cafile is None and capath is None and cadata is None:
+        cafile = certifi.where()
+    return _orig_create_default_context(purpose, cafile=cafile, capath=capath, cadata=cadata)
+
+ssl.create_default_context = _create_default_context
+
 import tensorflow as tf
 import tensorflow_hub as hub
+
+from .keypoints import KEYPOINT_NAMES
 
 # MoveNet Thunder expects 256x256 input; Lightning uses 192x192
 INPUT_SIZE = 256
@@ -17,27 +33,6 @@ BATCH_SIZE = 10
 # Hip indices for centering (left_hip=11, right_hip=12)
 LEFT_HIP_IDX = 11
 RIGHT_HIP_IDX = 12
-
-# MoveNet keypoint order (17 landmarks)
-KEYPOINT_NAMES = (
-    "nose",
-    "left_eye",
-    "right_eye",
-    "left_ear",
-    "right_ear",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "left_hip",
-    "right_hip",
-    "left_knee",
-    "right_knee",
-    "left_ankle",
-    "right_ankle",
-)
 
 logging.basicConfig(
     level=logging.INFO,

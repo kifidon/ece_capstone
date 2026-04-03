@@ -8,7 +8,7 @@ import sys
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from .movenet import KEYPOINT_NAMES
+from .keypoints import KEYPOINT_NAMES
 
 logging.basicConfig(
     level=logging.INFO,

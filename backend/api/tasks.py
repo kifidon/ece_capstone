@@ -46,7 +46,7 @@ def get_ml_model():
         if _ml_model is None:
             from .ml.ml import MLProcessor
 
-            _ml_model = MLProcessor("minimal")
+            _ml_model = MLProcessor("mixup_08")
         return _ml_model
 
 

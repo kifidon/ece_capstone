@@ -2,8 +2,34 @@ models:
   minimal:
     name: poser
     version: "1.01"
-    file: poser-1.01.keras
-    path: api/ml/poser-1.01.keras
+    file: poser-1.1.keras
+    path: api/ml/poser-1.1.keras
+    input_dim: 51
+    classes:
+      - lying
+      - reaching
+      - sitting
+      - standing
+    label_encoder: api/ml/label_encoder.json
+
+  mixup_06:
+    name: poser
+    version: "1.2"
+    file: poser-1.2.1.keras
+    path: api/ml/poser-1.2.1.keras
+    input_dim: 51
+    classes:
+      - lying
+      - reaching
+      - sitting
+      - standing
+    label_encoder: api/ml/label_encoder.json
+
+  mixup_08:
+    name: poser
+    version: "1.2.2"
+    file: poser-1.2.2.keras
+    path: api/ml/poser-1.2.2.keras
     input_dim: 51
     classes:
       - lying
